@@ -6,6 +6,11 @@ import { startPronunciationAssessment } from '../services/speechService';
 import type { WordResult, AssessmentResult } from '../services/speechService';
 import { calculateGamificationScore } from '../services/gamificationService';
 
+export interface WordTiming {
+  offsetSec: number;
+  durationSec: number;
+}
+
 interface ReadingSessionProps {
   text: string;
   onReset: () => void;
@@ -28,7 +33,14 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   const [sessionDone, setSessionDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fluencyScore, setFluencyScore] = useState<number | undefined>(undefined);
-  const [selectedWord, setSelectedWord] = useState<string | null>(null);
+  const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
+
+  // Audio recording state
+  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
+  const [wordTimings, setWordTimings] = useState<Record<number, WordTiming>>({});
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const micStreamRef = useRef<MediaStream | null>(null);
 
   const stopRef = useRef<(() => void) | null>(null);
 
@@ -61,6 +73,10 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
 
     setStatuses((prev) => ({ ...prev, [idx]: status }));
     setScores((prev) => ({ ...prev, [idx]: result.accuracyScore }));
+    setWordTimings((prev) => ({
+      ...prev,
+      [idx]: { offsetSec: result.offsetSec, durationSec: result.durationSec },
+    }));
   }, []);
 
   const handleDone = useCallback((result: AssessmentResult) => {
@@ -74,35 +90,70 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     setListening(false);
   }, []);
 
-  const startListening = useCallback(() => {
+  const stopRecording = useCallback(() => {
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop();
+    }
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current = null;
+  }, []);
+
+  const startListening = useCallback(async () => {
     setError(null);
     setSessionDone(false);
     setStatuses({});
     setScores({});
     setFluencyScore(undefined);
+    setWordTimings({});
+    setRecordingBlob(null);
     matchPointer.current = {};
+    chunksRef.current = [];
+
+    // Start mic recording in parallel with the Speech SDK
+    try {
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = micStream;
+      const recorder = new MediaRecorder(micStream);
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
+        setRecordingBlob(blob);
+      };
+      recorder.start();
+    } catch {
+      // Recording is optional — pronunciation assessment still works without it
+    }
 
     try {
       const stop = startPronunciationAssessment(text, handleWordResult, handleDone, handleError);
       stopRef.current = stop;
       setListening(true);
     } catch (err) {
+      stopRecording();
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [text, handleWordResult, handleDone, handleError]);
+  }, [text, handleWordResult, handleDone, handleError, stopRecording]);
 
   const stopListening = useCallback(() => {
     stopRef.current?.();
     stopRef.current = null;
+    stopRecording();
     setListening(false);
-  }, []);
+  }, [stopRecording]);
 
   useEffect(() => {
-    return () => { stopRef.current?.(); };
+    return () => {
+      stopRef.current?.();
+      recorderRef.current?.stop();
+      micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
   }, []);
 
-  const handleWordClick = useCallback((word: string) => {
-    setSelectedWord(word);
+  const handleWordClick = useCallback((_word: string, index: number) => {
+    setSelectedWordIndex(index);
   }, []);
 
   const gamificationScore = useMemo(
@@ -112,6 +163,9 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
 
   const assessedCount = Object.keys(statuses).length;
   const correctCount = Object.values(statuses).filter((s) => s === 'correct').length;
+
+  const selectedWord = selectedWordIndex !== null ? words[selectedWordIndex] : null;
+  const selectedTiming = selectedWordIndex !== null ? wordTimings[selectedWordIndex] : undefined;
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-lg mx-auto p-4">
@@ -128,6 +182,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           <React.Fragment key={i}>
             <WordCard
               word={word}
+              index={i}
               status={statuses[i] ?? 'pending'}
               score={scores[i]}
               onClick={handleWordClick}
@@ -207,7 +262,12 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
 
       {/* Word popup (bottom sheet) */}
       {selectedWord && (
-        <WordPopup word={selectedWord} onClose={() => setSelectedWord(null)} />
+        <WordPopup
+          word={selectedWord}
+          recordingBlob={recordingBlob}
+          timing={selectedTiming}
+          onClose={() => setSelectedWordIndex(null)}
+        />
       )}
     </div>
   );

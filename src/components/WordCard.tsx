@@ -4,10 +4,11 @@ export type WordStatus = 'pending' | 'correct' | 'mispronounced' | 'skipped';
 
 interface WordCardProps {
   word: string;
+  index: number;
   status: WordStatus;
   /** Accuracy score 0–100, displayed as a tooltip. */
   score?: number;
-  onClick: (word: string) => void;
+  onClick: (word: string, index: number) => void;
 }
 
 const statusClasses: Record<WordStatus, string> = {
@@ -17,14 +18,14 @@ const statusClasses: Record<WordStatus, string> = {
   skipped: 'text-yellow-600 bg-yellow-50 rounded',
 };
 
-const WordCard: React.FC<WordCardProps> = ({ word, status, score, onClick }) => {
+const WordCard: React.FC<WordCardProps> = ({ word, index, status, score, onClick }) => {
   return (
     <span
       role="button"
       tabIndex={0}
       title={score !== undefined ? `Score: ${Math.round(score)}` : 'Tap to hear pronunciation'}
-      onClick={() => onClick(word)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(word); }}
+      onClick={() => onClick(word, index)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(word, index); }}
       className={`
         cursor-pointer select-none transition-colors duration-200
         hover:bg-indigo-50 hover:rounded px-0.5

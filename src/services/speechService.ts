@@ -18,6 +18,10 @@ export interface WordResult {
   accuracyScore: number;
   /** Error type reported by the assessment engine, e.g. "None", "Omission", "Insertion", "Mispronunciation". */
   errorType: string;
+  /** Start time of the word in seconds (from Azure Offset, converted from 100ns ticks). */
+  offsetSec: number;
+  /** Duration of the word in seconds (from Azure Duration, converted from 100ns ticks). */
+  durationSec: number;
 }
 
 export interface AssessmentResult {
@@ -104,6 +108,8 @@ export function startPronunciationAssessment(
           errorType: String(
             (w.PronunciationAssessment as Record<string, unknown>)?.ErrorType ?? 'None',
           ),
+          offsetSec: Number(w.Offset ?? 0) / 1e7,
+          durationSec: Number(w.Duration ?? 0) / 1e7,
         }));
 
         words.forEach(onWord);

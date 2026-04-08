@@ -1,19 +1,24 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { splitSyllables } from '../services/syllableService';
 import { translateToHebrew } from '../services/translationService';
 import { speakWord } from '../services/speechService';
+import type { WordTiming } from './ReadingSession';
 
 interface WordPopupProps {
   word: string;
+  recordingBlob: Blob | null;
+  timing?: WordTiming;
   onClose: () => void;
 }
 
-const WordPopup: React.FC<WordPopupProps> = ({ word, onClose }) => {
+const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onClose }) => {
   const cleanWord = word.replace(/[^a-zA-Z']/g, '');
   const syllables = splitSyllables(cleanWord);
   const [hebrew, setHebrew] = useState<string | null>(null);
   const [translating, setTranslating] = useState(true);
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const [playingBack, setPlayingBack] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,23 +35,54 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, onClose }) => {
     return () => { cancelled = true; };
   }, [cleanWord]);
 
-  const handleSoundOut = useCallback(() => {
-    // Play each syllable sequentially with a short gap
-    let i = 0;
-    const playNext = () => {
-      if (i >= syllables.length) {
-        setPlayingIndex(null);
-        return;
+  // Clean up audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        URL.revokeObjectURL(audioRef.current.src);
       }
-      setPlayingIndex(i);
-      speakWord(syllables[i]);
-      i++;
-      setTimeout(playNext, 700);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
-    playNext();
-  }, [syllables]);
+  }, []);
 
-  const handlePlayFull = useCallback(() => {
+  const hasRecording = !!recordingBlob && !!timing && timing.durationSec > 0;
+
+  const handlePlayRecording = useCallback(() => {
+    if (!recordingBlob || !timing) return;
+
+    // Clean up previous playback
+    if (audioRef.current) {
+      audioRef.current.pause();
+      URL.revokeObjectURL(audioRef.current.src);
+    }
+
+    const url = URL.createObjectURL(recordingBlob);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    setPlayingBack(true);
+
+    // Add a small buffer around the word for natural-sounding playback
+    const buffer = 0.15;
+    const startTime = Math.max(0, timing.offsetSec - buffer);
+    const playDuration = timing.durationSec + buffer * 2;
+
+    audio.currentTime = startTime;
+    audio.play().catch(() => setPlayingBack(false));
+
+    timerRef.current = window.setTimeout(() => {
+      audio.pause();
+      setPlayingBack(false);
+      URL.revokeObjectURL(url);
+    }, playDuration * 1000);
+
+    audio.onended = () => {
+      setPlayingBack(false);
+      URL.revokeObjectURL(url);
+    };
+  }, [recordingBlob, timing]);
+
+  const handlePlayCorrect = useCallback(() => {
     speakWord(cleanWord);
   }, [cleanWord]);
 
@@ -71,13 +107,7 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, onClose }) => {
             {syllables.map((syl, i) => (
               <React.Fragment key={i}>
                 {i > 0 && <span className="text-gray-300 text-xl mx-0.5">·</span>}
-                <span
-                  className={`text-2xl font-semibold px-2 py-1 rounded-lg transition-colors duration-200 ${
-                    playingIndex === i
-                      ? 'bg-indigo-100 text-indigo-700 scale-110'
-                      : 'text-gray-700'
-                  }`}
-                >
+                <span className="text-2xl font-semibold px-2 py-1 text-gray-700">
                   {syl}
                 </span>
               </React.Fragment>
@@ -95,19 +125,25 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, onClose }) => {
 
           {/* Action buttons */}
           <div className="flex gap-3">
+            {hasRecording && (
+              <button
+                type="button"
+                onClick={handlePlayRecording}
+                disabled={playingBack}
+                className={`flex-1 py-3 rounded-2xl font-bold text-lg transition-colors shadow-sm ${
+                  playingBack
+                    ? 'bg-amber-300 text-amber-700'
+                    : 'bg-amber-400 text-amber-900 active:bg-amber-500'
+                }`}
+              >
+                {playingBack ? '🔊 Playing…' : '🎙️ How I Said It'}
+              </button>
+            )}
             <button
               type="button"
-              onClick={handleSoundOut}
-              className="flex-1 py-3 rounded-2xl bg-amber-400 text-amber-900 font-bold text-lg
-                         active:bg-amber-500 transition-colors shadow-sm"
-            >
-              🔤 Sound it Out
-            </button>
-            <button
-              type="button"
-              onClick={handlePlayFull}
-              className="flex-1 py-3 rounded-2xl bg-indigo-500 text-white font-bold text-lg
-                         active:bg-indigo-600 transition-colors shadow-sm"
+              onClick={handlePlayCorrect}
+              className={`${hasRecording ? 'flex-1' : 'w-full'} py-3 rounded-2xl bg-indigo-500 text-white font-bold text-lg
+                         active:bg-indigo-600 transition-colors shadow-sm`}
             >
               🔊 Hear it
             </button>
