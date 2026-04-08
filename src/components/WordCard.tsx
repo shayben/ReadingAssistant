@@ -11,28 +11,30 @@ interface WordCardProps {
 }
 
 const statusClasses: Record<WordStatus, string> = {
-  pending: 'bg-white text-gray-800 border-gray-200',
-  correct: 'bg-green-100 text-green-800 border-green-300',
-  mispronounced: 'bg-red-100 text-red-800 border-red-300',
-  skipped: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  pending: 'text-gray-800',
+  correct: 'text-green-600 bg-green-50 rounded',
+  mispronounced: 'text-red-600 bg-red-50 rounded',
+  skipped: 'text-yellow-600 bg-yellow-50 rounded',
 };
 
 const WordCard: React.FC<WordCardProps> = ({ word, status, score, onClick }) => {
   return (
-    <button
-      type="button"
+    <span
+      role="button"
+      tabIndex={0}
       title={score !== undefined ? `Score: ${Math.round(score)}` : 'Tap to hear pronunciation'}
       onClick={() => onClick(word)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(word); }}
       className={`
-        m-1 px-3 py-1 rounded-lg border-2 text-base font-medium
-        transition-colors duration-200 cursor-pointer select-none
-        active:scale-95 touch-manipulation
+        cursor-pointer select-none transition-colors duration-200
+        hover:bg-indigo-50 hover:rounded px-0.5
         ${statusClasses[status]}
       `}
     >
       {word}
-    </button>
+    </span>
   );
 };
 
 export default WordCard;
+
