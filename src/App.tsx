@@ -1,13 +1,16 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import ReadingSession from './components/ReadingSession';
 import { recognizeText } from './services/ocrService';
+import { readingLevels } from './data/demoParagraphs';
+import type { ReadingLevel, DemoParagraph } from './data/demoParagraphs';
 
-type AppStep = 'home' | 'camera' | 'processing' | 'reading';
+type AppStep = 'home' | 'camera' | 'processing' | 'reading' | 'demo-pick';
 
 export default function App() {
   const [step, setStep] = useState<AppStep>('home');
   const [assignmentText, setAssignmentText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [demoLevel, setDemoLevel] = useState<ReadingLevel | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -83,18 +86,29 @@ export default function App() {
     stopCamera();
     setAssignmentText('');
     setError(null);
+    setDemoLevel(null);
     setStep('home');
   }, [stopCamera]);
+
+  const handleDemoLevel = useCallback((level: ReadingLevel) => {
+    setDemoLevel(level);
+    setStep('demo-pick');
+  }, []);
+
+  const handleDemoParagraph = useCallback((p: DemoParagraph) => {
+    setAssignmentText(p.text);
+    setStep('reading');
+  }, []);
 
   // Clean up camera on unmount
   useEffect(() => {
     return () => { streamRef.current?.getTracks().forEach((t) => t.stop()); };
   }, []);
 
-  // ── Home: just a big camera button ──
+  // ── Home: camera button + demo levels ──
   if (step === 'home') {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center justify-center gap-6 p-6">
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-6 p-6 pt-12">
         <canvas ref={canvasRef} className="hidden" />
         <h1 className="text-3xl font-bold text-indigo-700">📖 Reading Assistant</h1>
 
@@ -105,13 +119,74 @@ export default function App() {
         <button
           type="button"
           onClick={openCamera}
-          className="w-32 h-32 rounded-full bg-indigo-600 text-white text-6xl
+          className="w-28 h-28 rounded-full bg-indigo-600 text-white text-5xl
                      flex items-center justify-center shadow-xl
                      active:bg-indigo-700 active:scale-95 transition-all"
         >
           📷
         </button>
         <p className="text-gray-400 text-sm">Tap to scan your reading</p>
+
+        {/* Divider */}
+        <div className="flex items-center gap-3 w-full max-w-xs">
+          <hr className="flex-1 border-gray-200" />
+          <span className="text-gray-400 text-sm font-medium">or try a story</span>
+          <hr className="flex-1 border-gray-200" />
+        </div>
+
+        {/* Reading level grid */}
+        <div className="grid grid-cols-4 gap-2 w-full max-w-xs">
+          {readingLevels.map((level) => (
+            <button
+              key={level.grade}
+              type="button"
+              onClick={() => handleDemoLevel(level)}
+              className="flex flex-col items-center gap-1 py-3 px-1 rounded-2xl bg-white border border-gray-100
+                         shadow-sm active:bg-indigo-50 active:border-indigo-200 transition-colors"
+            >
+              <span className="text-2xl">{level.emoji}</span>
+              <span className="text-xs font-semibold text-gray-600">
+                {level.grade === 'K' ? 'K' : level.grade}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Demo: pick a paragraph ──
+  if (step === 'demo-pick' && demoLevel) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white p-6 pt-8">
+        <div className="max-w-lg mx-auto">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="text-indigo-500 font-medium text-sm mb-4"
+          >
+            ← Back
+          </button>
+          <h2 className="text-2xl font-bold text-indigo-700 mb-1">
+            {demoLevel.emoji} {demoLevel.label}
+          </h2>
+          <p className="text-gray-400 text-sm mb-5">Pick a story to read</p>
+
+          <div className="flex flex-col gap-3">
+            {demoLevel.paragraphs.map((p, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => handleDemoParagraph(p)}
+                className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4
+                           active:bg-indigo-50 active:border-indigo-200 transition-colors"
+              >
+                <p className="font-semibold text-indigo-700 text-lg mb-1">{p.title}</p>
+                <p className="text-gray-500 text-sm line-clamp-2">{p.text}</p>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
