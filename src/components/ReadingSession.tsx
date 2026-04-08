@@ -35,13 +35,13 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   const wordIndexMap = useRef<Record<string, number[]>>({});
   useEffect(() => {
     const map: Record<string, number[]> = {};
-    words.forEach((w, i) => {
+    tokenise(text).forEach((w, i) => {
       const key = normalise(w);
       if (!map[key]) map[key] = [];
       map[key].push(i);
     });
     wordIndexMap.current = map;
-  }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [text]);
 
   // Track which occurrence of each word we've matched so far
   const matchPointer = useRef<Record<string, number>>({});
@@ -109,7 +109,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   }, []);
 
   const handleWordClick = useCallback((word: string) => {
-    speakWord(normalise(word));
+    speakWord(word);
   }, []);
 
   // Summary counts
