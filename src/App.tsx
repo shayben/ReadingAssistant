@@ -120,11 +120,20 @@ export default function App() {
         <button
           type="button"
           onClick={openCamera}
-          className="w-28 h-28 md:w-36 md:h-36 rounded-full bg-indigo-600 text-white text-5xl md:text-6xl
-                     flex items-center justify-center shadow-xl
-                     active:bg-indigo-700 active:scale-95 transition-all"
+          className="group w-28 h-28 md:w-36 md:h-36 rounded-full
+                     bg-gradient-to-b from-indigo-400 via-indigo-600 to-indigo-700
+                     flex items-center justify-center
+                     shadow-[0_6px_20px_rgba(79,70,229,0.45),inset_0_2px_4px_rgba(255,255,255,0.25),inset_0_-2px_4px_rgba(0,0,0,0.2)]
+                     active:shadow-[0_2px_8px_rgba(79,70,229,0.3),inset_0_-1px_2px_rgba(255,255,255,0.15),inset_0_2px_6px_rgba(0,0,0,0.25)]
+                     active:translate-y-0.5 active:scale-[0.97]
+                     transition-all duration-100 ease-out
+                     border border-indigo-500/30"
         >
-          📷
+          <span className="text-5xl md:text-6xl leading-none flex items-center justify-center
+                           drop-shadow-[0_2px_2px_rgba(0,0,0,0.2)]
+                           group-active:scale-90 transition-transform duration-100">
+            📷
+          </span>
         </button>
         <p className="text-gray-400 text-sm md:text-base">Tap to scan your reading</p>
 
