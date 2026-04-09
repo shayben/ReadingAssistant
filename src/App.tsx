@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import ReadingSession from './components/ReadingSession';
+import AdventureMode from './components/AdventureMode';
 import { recognizeText } from './services/ocrService';
 import { readingLevels } from './data/demoParagraphs';
 import type { ReadingLevel, DemoParagraph } from './data/demoParagraphs';
 
-type AppStep = 'home' | 'camera' | 'processing' | 'reading' | 'demo-pick';
+type AppStep = 'home' | 'camera' | 'processing' | 'reading' | 'demo-pick' | 'adventure';
 
 export default function App() {
   const [step, setStep] = useState<AppStep>('home');
@@ -173,6 +174,19 @@ export default function App() {
           <p className="text-gray-400 text-sm md:text-base mb-5">Pick a story to read</p>
 
           <div className="flex flex-col md:grid md:grid-cols-2 gap-3 md:gap-4">
+            {/* Create Your Own Story card */}
+            <button
+              type="button"
+              onClick={() => setStep('adventure')}
+              className="text-left bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl
+                         border border-purple-200 shadow-sm p-4 md:p-5
+                         active:from-purple-100 active:to-indigo-100 transition-colors
+                         md:col-span-2"
+            >
+              <p className="font-semibold text-purple-700 text-lg md:text-xl mb-1">🗺️ Create Your Own Story</p>
+              <p className="text-purple-500 text-sm md:text-base">Start an adventure where you choose what happens next!</p>
+            </button>
+
             {demoLevel.paragraphs.map((p, i) => (
               <button
                 key={i}
@@ -188,6 +202,18 @@ export default function App() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // ── Adventure mode ──
+  if (step === 'adventure' && demoLevel) {
+    return (
+      <AdventureMode
+        readingLevel={demoLevel.grade}
+        levelEmoji={demoLevel.emoji}
+        levelLabel={demoLevel.label}
+        onReset={handleReset}
+      />
     );
   }
 
