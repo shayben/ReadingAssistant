@@ -181,7 +181,23 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he'
   }, [cleanWord]);
 
   return (
-    <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-4 md:p-6 shadow-sm">
+    <>
+      {/* Backdrop — tap to close */}
+      <div
+        className="fixed inset-0 bg-black/20 z-40 animate-fade-in"
+        onClick={onClose}
+      />
+      {/* Bottom sheet */}
+      <div
+        className="fixed bottom-0 inset-x-0 z-50 bg-indigo-50 rounded-t-3xl border-t border-indigo-100
+                   p-4 md:p-6 pb-6 md:pb-8 shadow-lg max-h-[70vh] overflow-y-auto
+                   animate-slide-up overscroll-contain"
+        style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center mb-3">
+          <div className="w-10 h-1 rounded-full bg-gray-300" />
+        </div>
       {/* Header: word + close */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-2xl md:text-3xl font-bold text-indigo-700">{cleanWord}</span>
@@ -290,7 +306,8 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he'
           {practiceError}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 
