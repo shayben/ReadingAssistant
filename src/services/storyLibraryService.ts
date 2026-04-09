@@ -95,3 +95,34 @@ export function deleteStory(id: string): void {
 
 // Keep old name as alias for backward compat during migration
 export const saveStory = createStory;
+
+// ---------------------------------------------------------------------------
+// Story stats for trophy evaluation
+// ---------------------------------------------------------------------------
+
+export interface StoryStats {
+  /** Total stories created (in-progress + completed). */
+  storiesCreated: number;
+  /** Total stories that reached their ending. */
+  storiesCompleted: number;
+  /** Unique reading level grades used across all stories. */
+  readingLevelsUsed: string[];
+  /** Chapter count of the longest completed story. */
+  longestAdventure: number;
+}
+
+export function getStoryStats(): StoryStats {
+  const all = loadAll();
+  const completed = all.filter((s) => s.completed);
+  const levelsUsed = [...new Set(all.map((s) => s.readingLevel))];
+  const longestAdventure = completed.reduce(
+    (max, s) => Math.max(max, s.chapters.length),
+    0,
+  );
+  return {
+    storiesCreated: all.length,
+    storiesCompleted: completed.length,
+    readingLevelsUsed: levelsUsed,
+    longestAdventure,
+  };
+}

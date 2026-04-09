@@ -56,6 +56,10 @@ export interface UserProgress {
   sessionDates: string[];      // one entry per session (ISO date)
   practiceClearedCount: number;
   latestSession: SessionRecord | null;
+  /** Sum of wordCount across all loaded sessions. */
+  totalWordsRead: number;
+  /** Longest run of consecutive calendar weeks with at least one session. */
+  consecutiveWeeks: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +129,40 @@ function sessionTitle(text: string): string {
 function metaId(uid: string): string { return `${uid}_meta`; }
 function pwId(uid: string, word: string): string { return `${uid}_pw_${word}`; }
 function trophyId(uid: string, id: string): string { return `${uid}_trophy_${id}`; }
+
+/**
+ * Given an array of ISO date strings, return the longest run of consecutive
+ * calendar weeks (Mon–Sun) that each contain at least one date.
+ */
+export function computeConsecutiveWeeks(dates: string[]): number {
+  if (dates.length === 0) return 0;
+
+  // Collect unique week-start timestamps (Monday 00:00 UTC)
+  const weekStarts = new Set<number>();
+  for (const d of dates) {
+    const dt = new Date(d);
+    const day = dt.getUTCDay(); // 0=Sun … 6=Sat
+    const diffToMon = day === 0 ? -6 : 1 - day;
+    const monday = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate() + diffToMon));
+    weekStarts.add(monday.getTime());
+  }
+
+  const sorted = [...weekStarts].sort((a, b) => a - b);
+  if (sorted.length === 0) return 0;
+
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  let best = 1;
+  let run = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - sorted[i - 1] === WEEK_MS) {
+      run++;
+      if (run > best) best = run;
+    } else {
+      run = 1;
+    }
+  }
+  return best;
+}
 
 // ---------------------------------------------------------------------------
 // Session saving
@@ -355,11 +393,14 @@ export async function loadUserProgress(uid: string): Promise<UserProgress> {
       const metaDoc = await readDocument<MetaDoc>(metaId(uid), uid);
       if (metaDoc) {
         const sessions = await loadSessions(uid);
+        const dates = metaDoc.sessionDates ?? [];
         return {
           sessionCount: metaDoc.sessionCount ?? 0,
-          sessionDates: metaDoc.sessionDates ?? [],
+          sessionDates: dates,
           practiceClearedCount: metaDoc.practiceClearedCount ?? 0,
           latestSession: sessions[0] ?? null,
+          totalWordsRead: sessions.reduce((sum, s) => sum + (s.wordCount ?? 0), 0),
+          consecutiveWeeks: computeConsecutiveWeeks(dates),
         };
       }
     } catch { /* fall through */ }
@@ -369,5 +410,10 @@ export async function loadUserProgress(uid: string): Promise<UserProgress> {
     sessionCount: 0, sessionDates: [], practiceClearedCount: 0,
   };
   const sessions = lsGet<SessionRecord[]>(LS_SESSIONS(uid)) ?? [];
-  return { ...meta, latestSession: sessions[0] ?? null };
+  return {
+    ...meta,
+    latestSession: sessions[0] ?? null,
+    totalWordsRead: sessions.reduce((sum, s) => sum + (s.wordCount ?? 0), 0),
+    consecutiveWeeks: computeConsecutiveWeeks(meta.sessionDates),
+  };
 }

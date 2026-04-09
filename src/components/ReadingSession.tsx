@@ -19,6 +19,7 @@ import {
 } from '../services/progressService';
 import { computeNewTrophies, getTrophy } from '../services/trophyService';
 import type { Trophy } from '../services/trophyService';
+import { getStoryStats } from '../services/storyLibraryService';
 
 export type { WordTiming } from '../hooks/useAssessment';
 
@@ -205,7 +206,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
         }
         const existingTrophies = await loadTrophies(user.uid);
         const earnedIds = new Set(existingTrophies.map((t) => t.id));
-        const newIds = computeNewTrophies(progress, earnedIds);
+        const newIds = computeNewTrophies(progress, earnedIds, getStoryStats());
         if (newIds.length > 0) {
           await saveTrophies(user.uid, newIds);
           setNewTrophies(newIds.map((id) => getTrophy(id)!).filter(Boolean));

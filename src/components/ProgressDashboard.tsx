@@ -293,37 +293,63 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
             )}
 
             {/* ── Trophies tab ── */}
-            {tab === 'trophies' && (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-                {ALL_TROPHIES.map((trophy) => {
-                  const earned = earnedIds.has(trophy.id);
-                  const earnedRecord = earnedTrophies.find((t) => t.id === trophy.id);
-                  return (
-                    <div
-                      key={trophy.id}
-                      className={`rounded-2xl border shadow-sm p-4 md:p-5 text-center transition-opacity ${
-                        earned
-                          ? 'bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200'
-                          : 'bg-gray-50 border-gray-100 opacity-40'
-                      }`}
-                    >
-                      <p className={`text-4xl md:text-5xl mb-2 ${earned ? '' : 'grayscale'}`}>
-                        {earned ? trophy.emoji : '🔒'}
-                      </p>
-                      <p className={`text-sm md:text-base font-bold ${earned ? 'text-amber-700' : 'text-gray-400'}`}>
-                        {trophy.name}
-                      </p>
-                      <p className="text-xs md:text-sm text-gray-400 mt-1 leading-snug">{trophy.description}</p>
-                      {earned && earnedRecord && (
-                        <p className="text-[10px] md:text-xs text-amber-400 mt-2">
-                          Earned {formatDate(earnedRecord.earnedAt)}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            {tab === 'trophies' && (() => {
+              const categories: { key: string; label: string; emoji: string }[] = [
+                { key: 'reading', label: 'Reading', emoji: '📖' },
+                { key: 'score', label: 'Scores', emoji: '⭐' },
+                { key: 'words', label: 'Vocabulary', emoji: '💪' },
+                { key: 'streak', label: 'Consistency', emoji: '🔥' },
+                { key: 'story', label: 'Adventures', emoji: '📝' },
+                { key: 'mastery', label: 'Mastery', emoji: '🎓' },
+              ];
+              return (
+                <div className="space-y-6">
+                  <p className="text-center text-sm text-gray-400">
+                    {earnedTrophies.length} / {ALL_TROPHIES.length} unlocked
+                  </p>
+                  {categories.map(({ key, label, emoji }) => {
+                    const group = ALL_TROPHIES.filter((t) => t.category === key);
+                    if (group.length === 0) return null;
+                    return (
+                      <div key={key}>
+                        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                          {emoji} {label}
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                          {group.map((trophy) => {
+                            const earned = earnedIds.has(trophy.id);
+                            const earnedRecord = earnedTrophies.find((t) => t.id === trophy.id);
+                            return (
+                              <div
+                                key={trophy.id}
+                                className={`rounded-2xl border shadow-sm p-4 md:p-5 text-center transition-opacity ${
+                                  earned
+                                    ? 'bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200'
+                                    : 'bg-gray-50 border-gray-100 opacity-40'
+                                }`}
+                              >
+                                <p className={`text-4xl md:text-5xl mb-2 ${earned ? '' : 'grayscale'}`}>
+                                  {earned ? trophy.emoji : '🔒'}
+                                </p>
+                                <p className={`text-sm md:text-base font-bold ${earned ? 'text-amber-700' : 'text-gray-400'}`}>
+                                  {trophy.name}
+                                </p>
+                                <p className="text-xs md:text-sm text-gray-400 mt-1 leading-snug">{trophy.description}</p>
+                                {earned && earnedRecord && (
+                                  <p className="text-[10px] md:text-xs text-amber-400 mt-2">
+                                    Earned {formatDate(earnedRecord.earnedAt)}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* ── Analytics tab ── */}
             {tab === 'analytics' && (() => {
