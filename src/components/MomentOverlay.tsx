@@ -51,7 +51,7 @@ const MomentOverlay: React.FC<MomentOverlayProps> = ({ moments, currentWordIndex
     if (m.audioUrl) {
       try {
         const audio = new Audio(m.audioUrl);
-        audio.volume = 0.25;
+        audio.volume = 0.08;
         audioRef.current = audio;
         audio.play().catch(() => {});
       } catch { /* best-effort */ }
