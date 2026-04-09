@@ -17,7 +17,8 @@
 
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc,
-  collection, getDocs, serverTimestamp,
+  collection, getDocs, query, limit, orderBy,
+  serverTimestamp,
   increment, arrayUnion,
   type DocumentData,
 } from 'firebase/firestore';
@@ -269,10 +270,10 @@ export async function loadSessions(uid: string): Promise<SessionRecord[]> {
   // Try Firestore first
   if (db) {
     try {
-      const snap = await getDocs(collection(db, 'users', uid, 'sessions'));
+      const q = query(collection(db, 'users', uid, 'sessions'), orderBy('date', 'desc'), limit(200));
+      const snap = await getDocs(q);
       const records = snap.docs.map((d) => d.data() as SessionRecord);
-      records.sort((a, b) => b.date.localeCompare(a.date));
-      lsSet(LS_SESSIONS(uid), records.slice(0, 200));
+      lsSet(LS_SESSIONS(uid), records);
       return records;
     } catch { /* fall through to localStorage */ }
   }
@@ -282,12 +283,13 @@ export async function loadSessions(uid: string): Promise<SessionRecord[]> {
 export async function loadPracticeWords(uid: string): Promise<PracticeWord[]> {
   if (db) {
     try {
-      const snap = await getDocs(collection(db, 'users', uid, 'practiceWords'));
+      const q = query(collection(db, 'users', uid, 'practiceWords'), orderBy('failCount', 'desc'), limit(500));
+      const snap = await getDocs(q);
       const words = snap.docs.map((d) => d.data() as PracticeWord);
       const stored: Record<string, PracticeWord> = {};
       words.forEach((w) => { stored[w.word] = w; });
       lsSet(LS_PRACTICE(uid), stored);
-      return words.sort((a, b) => b.failCount - a.failCount);
+      return words;
     } catch { /* fall through */ }
   }
   const stored = lsGet<Record<string, PracticeWord>>(LS_PRACTICE(uid)) ?? {};

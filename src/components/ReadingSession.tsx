@@ -277,6 +277,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         }
       } catch { /* non-fatal — assessment data is already shown to the user */ }
     })();
+    // Only run when sessionDone flips to true; other deps are stable at that moment
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionDone]);
 
@@ -453,7 +454,6 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           ))}
         </div>
       )}
-
 
       {/* Word popup (bottom sheet) */}
       {selectedWord && (
