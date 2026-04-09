@@ -2,10 +2,17 @@
  * Azure Computer Vision OCR service.
  * Sends an image (base64 data URL or Blob) to the Azure Read API and
  * returns the recognised text as a single string.
+ *
+ * An optional LLM postprocessing pass (GPT-4o-mini) cleans OCR noise
+ * and restructures the output for easier reading.
  */
 
 const VISION_ENDPOINT = import.meta.env.VITE_AZURE_VISION_ENDPOINT as string;
 const VISION_KEY = import.meta.env.VITE_AZURE_VISION_KEY as string;
+
+const OPENAI_ENDPOINT = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT as string;
+const OPENAI_KEY = import.meta.env.VITE_AZURE_OPENAI_KEY as string;
+const OPENAI_DEPLOYMENT = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT as string;
 
 /** Max dimension (px) for the longest side before sending to Azure. */
 const MAX_IMAGE_DIMENSION = 2048;
@@ -40,6 +47,56 @@ async function prepareImage(dataUrl: string): Promise<Blob> {
   img.close();
 
   return canvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
+}
+
+const CLEAN_PROMPT = `You are an OCR postprocessor for a children's reading app.
+Given raw OCR lines from a scanned page, return ONLY the main readable text.
+
+Rules:
+- Remove page numbers, headers, footers, watermarks, URLs, copyright notices
+- Remove stray symbols, OCR artifacts, and partial/garbled words
+- If there is a title or heading, put it on its own line followed by a blank line
+- Separate paragraphs with a blank line
+- Fix obvious OCR errors (e.g. "rn" → "m", "l" → "I" in context)
+- Do NOT add, rephrase, or summarise — keep the original wording
+- Return the cleaned text only, no commentary`;
+
+/**
+ * Use GPT-4o-mini to clean raw OCR lines: remove noise, fix layout.
+ * Returns the original text unchanged if the LLM is unavailable.
+ */
+async function postprocessOcr(lines: string[]): Promise<string> {
+  if (!OPENAI_ENDPOINT || !OPENAI_KEY || !OPENAI_DEPLOYMENT || lines.length === 0) {
+    return lines.join(' ');
+  }
+
+  const url = `${OPENAI_ENDPOINT}/openai/deployments/${OPENAI_DEPLOYMENT}/chat/completions?api-version=2024-02-01`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'api-key': OPENAI_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: CLEAN_PROMPT },
+          { role: 'user', content: lines.join('\n') },
+        ],
+        temperature: 0.1,
+        max_tokens: 1000,
+      }),
+    });
+
+    if (!res.ok) return lines.join(' ');
+
+    const data = await res.json();
+    const cleaned: string = data?.choices?.[0]?.message?.content ?? '';
+    return cleaned.trim() || lines.join(' ');
+  } catch {
+    return lines.join(' ');
+  }
 }
 
 /**
@@ -84,6 +141,6 @@ export async function recognizeText(imageDataUrl: string): Promise<OcrResult> {
     }
   }
 
-  const text = lines.join(' ');
+  const text = await postprocessOcr(lines);
   return { text, lines };
 }
