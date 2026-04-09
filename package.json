@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@azure/msal-browser": "^5.6.3",
     "@tailwindcss/vite": "^4.2.2",
     "microsoft-cognitiveservices-speech-sdk": "^1.49.0",
     "react": "^19.2.4",
