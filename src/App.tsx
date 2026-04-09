@@ -132,10 +132,14 @@ export default function App() {
                      transition-all duration-100 ease-out
                      border border-indigo-500/30"
         >
-          <span className="text-5xl md:text-6xl leading-none flex items-center justify-center
+          <span className="text-5xl md:text-6xl flex items-center justify-center
                            drop-shadow-[0_2px_2px_rgba(0,0,0,0.2)]
-                           group-active:scale-90 transition-transform duration-100">
-            📷
+                           group-active:scale-90 transition-transform duration-100
+                           -mt-0.5">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-12 h-12 md:w-14 md:h-14">
+              <path d="M12 9a3.75 3.75 0 100 7.5A3.75 3.75 0 0012 9z" />
+              <path fillRule="evenodd" d="M9.344 3.071a49.52 49.52 0 015.312 0c.967.052 1.83.585 2.332 1.39l.821 1.317c.24.383.645.643 1.11.71.386.054.77.113 1.152.177 1.432.239 2.429 1.493 2.429 2.909V18a3 3 0 01-3 3H4.5a3 3 0 01-3-3V9.574c0-1.416.997-2.67 2.429-2.909.382-.064.766-.123 1.151-.178a1.56 1.56 0 001.11-.71l.822-1.315a2.942 2.942 0 012.332-1.39zM12 10.5a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5z" clipRule="evenodd" />
+            </svg>
           </span>
         </button>
         <p className="text-gray-400 text-sm md:text-base">Tap to scan your reading</p>
