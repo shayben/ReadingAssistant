@@ -8,12 +8,11 @@ import { recognizeText } from './services/ocrService';
 import { readingLevels } from './data/demoParagraphs';
 import type { ReadingLevel, DemoParagraph } from './data/demoParagraphs';
 import { useAuth } from './contexts/AuthContext';
-
-type AppStep = 'home' | 'camera' | 'processing' | 'reading' | 'demo-pick' | 'adventure' | 'dashboard';
+import { useAppStep } from './hooks/useAppStep';
 
 export default function App() {
   const { user, loading: authLoading, isConfigured, signOut } = useAuth();
-  const [step, setStep] = useState<AppStep>('home');
+  const { step, navigate, goHome } = useAppStep();
   const [assignmentText, setAssignmentText] = useState('');
   const [momentCacheKey, setMomentCacheKey] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +29,7 @@ export default function App() {
 
   const openCamera = useCallback(async () => {
     setError(null);
-    setStep('camera');
+    navigate('camera');
 
     const constraintOptions: MediaStreamConstraints[] = [
       { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
@@ -48,7 +47,7 @@ export default function App() {
 
     if (!stream) {
       setError('Unable to access camera. Please allow camera permissions.');
-      setStep('home');
+      goHome();
       return;
     }
 
@@ -57,7 +56,7 @@ export default function App() {
       videoRef.current.srcObject = stream;
       try { await videoRef.current.play(); } catch { /* safe to ignore */ }
     }
-  }, []);
+  }, [navigate, goHome]);
 
   const capture = useCallback(async () => {
     const video = videoRef.current;
@@ -72,22 +71,22 @@ export default function App() {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
     stopCamera();
-    setStep('processing');
+    navigate('processing');
 
     try {
       const result = await recognizeText(dataUrl);
       if (result.text.trim()) {
         setAssignmentText(result.text);
-        setStep('reading');
+        navigate('reading');
       } else {
         setError('No text found — try again with clearer text.');
-        setStep('home');
+        goHome();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setStep('home');
+      goHome();
     }
-  }, [stopCamera]);
+  }, [stopCamera, navigate, goHome]);
 
   const handleReset = useCallback(() => {
     stopCamera();
@@ -95,19 +94,19 @@ export default function App() {
     setMomentCacheKey(undefined);
     setError(null);
     setDemoLevel(null);
-    setStep('home');
-  }, [stopCamera]);
+    goHome();
+  }, [stopCamera, goHome]);
 
   const handleDemoLevel = useCallback((level: ReadingLevel) => {
     setDemoLevel(level);
-    setStep('demo-pick');
-  }, []);
+    navigate('demo-pick');
+  }, [navigate]);
 
   const handleDemoParagraph = useCallback((p: DemoParagraph, index: number) => {
     setAssignmentText(p.text);
     setMomentCacheKey(demoLevel ? `${demoLevel.grade}-${index}` : undefined);
-    setStep('reading');
-  }, [demoLevel]);
+    navigate('reading');
+  }, [demoLevel, navigate]);
 
   // Clean up camera on unmount
   useEffect(() => {
@@ -123,14 +122,14 @@ export default function App() {
     );
   }
 
-  // Show login screen only when Firebase is configured and nobody is signed in
+  // Show login screen only when MSAL is configured and nobody is signed in
   if (isConfigured && !user) {
     return <LoginScreen />;
   }
 
   // ── Progress Dashboard ──
   if (step === 'dashboard' && user) {
-    return <ProgressDashboard user={user} onClose={() => setStep('home')} />;
+    return <ProgressDashboard user={user} onClose={goHome} />;
   }
 
   // ── Home: camera button + demo levels ──
@@ -144,7 +143,7 @@ export default function App() {
         {user && (
           <UserHeader
             user={user}
-            onOpenDashboard={() => setStep('dashboard')}
+            onOpenDashboard={() => navigate('dashboard')}
             onSignOut={signOut}
           />
         )}
@@ -226,7 +225,7 @@ export default function App() {
             {/* Create Your Own Story card */}
             <button
               type="button"
-              onClick={() => setStep('adventure')}
+              onClick={() => navigate('adventure')}
               className="text-left bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl
                          border border-purple-200 shadow-sm p-4 md:p-5
                          active:from-purple-100 active:to-indigo-100 transition-colors
@@ -294,6 +293,7 @@ export default function App() {
         <button
           type="button"
           onClick={handleReset}
+          aria-label="Close camera"
           className="absolute top-4 left-4 text-white text-3xl bg-black/40 rounded-full w-10 h-10
                      flex items-center justify-center"
         >

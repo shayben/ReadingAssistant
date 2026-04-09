@@ -81,7 +81,11 @@ const MomentOverlay: React.FC<MomentOverlayProps> = ({ moments, currentWordIndex
         transition-all duration-500 ease-out
         ${visible ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 translate-x-8 scale-95'}
       `}
+      role="status"
+      aria-live="polite"
       onClick={dismiss}
+      onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') dismiss(); }}
+      tabIndex={0}
     >
       {active.imageUrl && (
         <img

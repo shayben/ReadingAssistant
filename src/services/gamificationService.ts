@@ -6,7 +6,7 @@
  * see positive progress even when some words need more practice.
  */
 
-import type { WordStatus } from '../components/WordCard';
+import type { WordStatus } from '../types/word';
 
 // ---------------------------------------------------------------------------
 // Syllable & difficulty helpers

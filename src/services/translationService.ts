@@ -3,6 +3,8 @@
  * returning a word→translation map. Individual word lookups are instant after that.
  */
 
+import { z } from 'zod';
+
 const TRANSLATOR_KEY = import.meta.env.VITE_AZURE_TRANSLATOR_KEY as string;
 const TRANSLATOR_REGION = import.meta.env.VITE_AZURE_TRANSLATOR_REGION as string;
 
@@ -228,10 +230,13 @@ export async function batchTranslateText(
     const data = await res.json();
     const content: string = data?.choices?.[0]?.message?.content ?? '';
     const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-    const parsed = JSON.parse(jsonStr) as Record<string, string>;
+    const parsed = z.record(z.string(), z.string()).safeParse(
+      JSON.parse(jsonStr),
+    );
+    if (!parsed.success) return map;
 
-    for (const [key, val] of Object.entries(parsed)) {
-      if (typeof val === 'string' && val.trim()) {
+    for (const [key, val] of Object.entries(parsed.data)) {
+      if (val.trim()) {
         map.set(key.toLowerCase(), val.trim());
       }
     }

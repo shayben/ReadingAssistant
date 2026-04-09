@@ -3,6 +3,8 @@
  * "choose your own adventure" chapters, conditioned by reading level.
  */
 
+import { z } from 'zod';
+
 const OPENAI_ENDPOINT = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT as string;
 const OPENAI_KEY = import.meta.env.VITE_AZURE_OPENAI_KEY as string;
 const OPENAI_DEPLOYMENT = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT as string;
@@ -101,6 +103,17 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
   return fetch(url, init);
 }
 
+const ChapterSchema = z.object({
+  title: z.string().optional(),
+  text: z.string(),
+  summary: z.string().optional(),
+  choices: z.array(z.object({
+    emoji: z.string(),
+    text: z.string(),
+  })).optional(),
+  isEnding: z.boolean().optional(),
+});
+
 export async function generateChapter(
   context: StoryContext,
   choice?: string,
@@ -138,14 +151,14 @@ export async function generateChapter(
   const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
 
   try {
-    const parsed = JSON.parse(jsonStr);
+    const parsed = ChapterSchema.parse(JSON.parse(jsonStr));
     return {
       chapterNumber,
       title: parsed.title ?? `Chapter ${chapterNumber}`,
-      text: parsed.text ?? '',
+      text: parsed.text,
       summary: parsed.summary ?? '',
-      choices: Array.isArray(parsed.choices) ? parsed.choices : [],
-      isEnding: !!parsed.isEnding,
+      choices: parsed.choices ?? [],
+      isEnding: parsed.isEnding ?? false,
     };
   } catch {
     // If JSON parsing fails, treat the raw content as chapter text

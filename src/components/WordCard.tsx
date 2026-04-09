@@ -1,6 +1,7 @@
 import React from 'react';
+import type { WordStatus } from '../types/word';
 
-export type WordStatus = 'pending' | 'correct' | 'mispronounced' | 'skipped';
+export type { WordStatus } from '../types/word';
 
 interface WordCardProps {
   word: string;
@@ -24,22 +25,22 @@ const statusClasses: Record<WordStatus, string> = {
 
 const WordCard: React.FC<WordCardProps> = ({ word, index, status, isNext, hasMoment, score, onClick }) => {
   return (
-    <span
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
+      aria-label={`${word}${score !== undefined ? `, score ${Math.round(score)}` : ''}`}
       title={score !== undefined ? `Score: ${Math.round(score)}` : 'Tap to hear pronunciation'}
       onClick={() => onClick(word, index)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(word, index); }}
       className={`
         cursor-pointer select-none transition-colors duration-200
         hover:bg-indigo-50 hover:rounded px-0.5
+        border-none bg-transparent font-inherit text-inherit p-0
         ${isNext ? 'animate-next-word rounded px-1 font-semibold underline decoration-2 decoration-indigo-400' : ''}
         ${hasMoment ? 'border-b-2 border-dashed border-purple-300' : ''}
         ${statusClasses[status]}
       `}
     >
       {word}{hasMoment && <span className="text-[10px] md:text-xs leading-none align-top ml-px opacity-60">✨</span>}
-    </span>
+    </button>
   );
 };
 

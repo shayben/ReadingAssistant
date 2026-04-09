@@ -7,6 +7,8 @@
  * a simple in-memory cache to avoid duplicate requests.
  */
 
+import { z } from 'zod';
+
 const OPENAI_ENDPOINT = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT as string;
 const OPENAI_KEY = import.meta.env.VITE_AZURE_OPENAI_KEY as string;
 const OPENAI_DEPLOYMENT = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT as string;
@@ -19,6 +21,15 @@ export interface KeyMoment {
   musicCategory?: string;
   caption: string;
 }
+
+const KeyMomentSchema = z.object({
+  wordIndex: z.number().int().nonnegative(),
+  triggerWord: z.string(),
+  type: z.enum(['image', 'music', 'both']),
+  imageQuery: z.string().optional(),
+  musicCategory: z.string().optional(),
+  caption: z.string(),
+});
 
 const SYSTEM_PROMPT = `You are a reading assistant for children ages 6-12. Analyse the given text and identify 2-4 key moments where showing a visual image or playing relevant background music would make reading more engaging.
 
@@ -80,16 +91,13 @@ export async function analyzeTextForMoments(words: string[]): Promise<KeyMoment[
     const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
     const moments = JSON.parse(jsonStr) as KeyMoment[];
 
-    const valid = moments.filter(
-      (m) =>
-        typeof m.wordIndex === 'number' &&
-        m.wordIndex >= 0 &&
-        m.wordIndex < words.length &&
-        typeof m.caption === 'string',
+    const valid = z.array(KeyMomentSchema).safeParse(moments);
+    const filtered = (valid.success ? valid.data : []).filter(
+      (m) => m.wordIndex >= 0 && m.wordIndex < words.length,
     );
 
-    momentsCache.set(text, valid);
-    return valid;
+    momentsCache.set(text, filtered);
+    return filtered;
   } catch {
     return [];
   }

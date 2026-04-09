@@ -112,11 +112,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     if (!msalInstance) return;
     const account = msalInstance.getAllAccounts()[0];
+    // Revoke photo object URL to prevent memory leak
+    if (user?.photoURL?.startsWith('blob:')) {
+      URL.revokeObjectURL(user.photoURL);
+    }
     setUser(null);
     await msalInstance.logoutPopup({ account }).catch((err) => {
       console.warn('[Auth] logoutPopup error:', err);
     });
-  }, []);
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, loading, isConfigured: isMsalConfigured, signIn, signOut }}>

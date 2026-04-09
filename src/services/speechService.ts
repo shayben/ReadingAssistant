@@ -12,6 +12,31 @@ import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
 const SPEECH_KEY = import.meta.env.VITE_AZURE_SPEECH_KEY as string;
 const SPEECH_REGION = import.meta.env.VITE_AZURE_SPEECH_REGION as string;
 
+/** Map of recognition locale → default TTS neural voice. */
+const VOICE_MAP: Record<string, string> = {
+  'en-US': 'en-US-JennyNeural',
+  'en-GB': 'en-GB-SoniaNeural',
+  'en-AU': 'en-AU-NatashaNeural',
+  'es-ES': 'es-ES-ElviraNeural',
+  'fr-FR': 'fr-FR-DeniseNeural',
+  'de-DE': 'de-DE-KatjaNeural',
+  'it-IT': 'it-IT-ElsaNeural',
+  'pt-BR': 'pt-BR-FranciscaNeural',
+  'zh-CN': 'zh-CN-XiaoxiaoNeural',
+  'ja-JP': 'ja-JP-NanamiNeural',
+  'ko-KR': 'ko-KR-SunHiNeural',
+  'hi-IN': 'hi-IN-SwaraNeural',
+  'he-IL': 'he-IL-HilaNeural',
+  'ar-SA': 'ar-SA-ZariyahNeural',
+  'ru-RU': 'ru-RU-SvetlanaNeural',
+};
+
+const DEFAULT_LOCALE = 'en-US';
+
+function resolveVoice(locale: string): string {
+  return VOICE_MAP[locale] ?? VOICE_MAP[DEFAULT_LOCALE];
+}
+
 export interface WordResult {
   word: string;
   /** Accuracy score 0–100 (100 = perfect). */
@@ -62,9 +87,10 @@ export function startPronunciationAssessment(
   onWord: WordCallback,
   onDone: DoneCallback,
   onError: ErrorCallback,
+  locale: string = DEFAULT_LOCALE,
 ): () => void {
   const speechConfig = getSpeechConfig();
-  speechConfig.speechRecognitionLanguage = 'en-US';
+  speechConfig.speechRecognitionLanguage = locale;
 
   const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
 
@@ -183,6 +209,7 @@ export function startWindowedPronunciationAssessment(
   onWord: WordCallback,
   onAllDone: DoneCallback,
   onError: ErrorCallback,
+  locale: string = DEFAULT_LOCALE,
 ): () => void {
   let cursor = 0;
   let currentStop: (() => void) | null = null;
@@ -243,6 +270,7 @@ export function startWindowedPronunciationAssessment(
       onWindowWord,
       onWindowDone,
       (err) => { if (!stopped) onError(err); },
+      locale,
     );
   }
 
@@ -255,9 +283,9 @@ export function startWindowedPronunciationAssessment(
 }
 
 /** Synthesise and play the given word using Azure TTS. */
-export function speakWord(word: string): void {
+export function speakWord(word: string, locale: string = DEFAULT_LOCALE): void {
   const speechConfig = getSpeechConfig();
-  speechConfig.speechSynthesisVoiceName = 'en-US-JennyNeural';
+  speechConfig.speechSynthesisVoiceName = resolveVoice(locale);
 
   const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig);
   synthesizer.speakTextAsync(
@@ -274,9 +302,9 @@ export function speakWord(word: string): void {
  * One-shot pronunciation assessment for a single word.
  * Returns a promise that resolves with the WordResult.
  */
-export function assessWord(word: string): { promise: Promise<WordResult>; cancel: () => void } {
+export function assessWord(word: string, locale: string = DEFAULT_LOCALE): { promise: Promise<WordResult>; cancel: () => void } {
   const speechConfig = getSpeechConfig();
-  speechConfig.speechRecognitionLanguage = 'en-US';
+  speechConfig.speechRecognitionLanguage = locale;
 
   const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
 

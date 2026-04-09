@@ -1,8 +1,10 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { splitSyllables } from '../services/syllableService';
-import { speakWord, assessWord } from '../services/speechService';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import SyllableBreakdown from './SyllableBreakdown';
+import TranslationDisplay from './TranslationDisplay';
+import PracticeButton from './PracticeButton';
+import { speakWord } from '../services/speechService';
 import type { WordResult } from '../services/speechService';
-import type { WordTiming } from './ReadingSession';
+import type { WordTiming } from '../hooks/useAssessment';
 import type { PreloadedMoment } from '../services/mediaService';
 import type { WordTranslationMap } from '../services/translationService';
 
@@ -25,74 +27,13 @@ interface WordPopupProps {
   onClose: () => void;
 }
 
-/**
- * Distribute phoneme scores across syllables proportionally by character count.
- * Returns an average accuracy score (0–100) per syllable.
- */
-function syllableScores(syllables: string[], phonemeScores: number[]): number[] {
-  if (phonemeScores.length === 0) return [];
-
-  const totalChars = syllables.reduce((s, syl) => s + syl.length, 0);
-  const scores: number[] = [];
-  let phonemeIdx = 0;
-
-  for (const syl of syllables) {
-    // How many phonemes this syllable "owns", proportional to its character share
-    const share = (syl.length / totalChars) * phonemeScores.length;
-    const count = Math.max(1, Math.round(share));
-    const slice = phonemeScores.slice(phonemeIdx, phonemeIdx + count);
-    phonemeIdx += count;
-    const avg = slice.length > 0 ? slice.reduce((a, b) => a + b, 0) / slice.length : 0;
-    scores.push(Math.round(avg));
-  }
-
-  // If rounding left over phonemes, fold them into the last syllable
-  if (phonemeIdx < phonemeScores.length) {
-    const remaining = phonemeScores.slice(phonemeIdx);
-    const last = scores[scores.length - 1];
-    const combined = [...remaining, last];
-    scores[scores.length - 1] = Math.round(combined.reduce((a, b) => a + b, 0) / combined.length);
-  }
-
-  return scores;
-}
-
-function scoreColor(score: number): string {
-  if (score >= 80) return 'text-green-600 bg-green-50';
-  if (score >= 50) return 'text-amber-600 bg-amber-50';
-  return 'text-red-600 bg-red-50';
-}
-
-function scoreEmoji(score: number): string {
-  if (score >= 80) return '✅';
-  if (score >= 50) return '🔶';
-  return '❌';
-}
-
 const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translationMap, recordingBlob, timing, moment, onPracticeResult, onClose }) => {
   const cleanWord = word.replace(/[^a-zA-Z']/g, '');
-  const syllables = splitSyllables(cleanWord);
   const [playingBack, setPlayingBack] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  // Practice state
-  const [practicing, setPracticing] = useState(false);
-  const [practiceScore, setPracticeScore] = useState<number | null>(null);
-  const [practicePhonemes, setPracticePhonemes] = useState<number[]>([]);
-  const [practiceError, setPracticeError] = useState<string | null>(null);
-  const cancelRef = useRef<(() => void) | null>(null);
-
-  const activePhonemes = practicePhonemes.length > 0 ? practicePhonemes : (timing?.phonemeScores ?? []);
-  const sylScores = useMemo(
-    () => syllableScores(syllables, activePhonemes),
-    [syllables, activePhonemes],
-  );
-  const hasAssessment = sylScores.length > 0;
-
-  // Instant lookup from pre-computed map
-  const translated = translationMap?.get(cleanWord.toLowerCase()) ?? null;
-  const translating = translationMap !== undefined && translationMap.size === 0;
+  const phonemeScores = timing?.phonemeScores ?? [];
 
   useEffect(() => {
     return () => {
@@ -101,33 +42,10 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translatio
         URL.revokeObjectURL(audioRef.current.src);
       }
       if (timerRef.current) clearTimeout(timerRef.current);
-      cancelRef.current?.();
     };
   }, []);
 
   const hasRecording = !!recordingBlob && !!timing && timing.durationSec > 0;
-
-  const handlePractice = useCallback(async () => {
-    setPracticing(true);
-    setPracticeScore(null);
-    setPracticePhonemes([]);
-    setPracticeError(null);
-
-    const { promise, cancel } = assessWord(cleanWord);
-    cancelRef.current = cancel;
-
-    try {
-      const result = await promise;
-      setPracticeScore(Math.round(result.accuracyScore));
-      setPracticePhonemes(result.phonemeScores);
-      onPracticeResult?.(result);
-    } catch (err) {
-      setPracticeError(err instanceof Error ? err.message : 'Try again');
-    } finally {
-      setPracticing(false);
-      cancelRef.current = null;
-    }
-  }, [cleanWord, onPracticeResult]);
 
   const handlePlayRecording = useCallback(() => {
     if (!recordingBlob || !timing) return;
@@ -167,17 +85,22 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translatio
 
   return (
     <>
-      {/* Backdrop — tap to close */}
+      {/* Backdrop — tap or press Escape to close */}
       <div
         className="fixed inset-0 bg-black/20 z-40 animate-fade-in"
         onClick={onClose}
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+        role="presentation"
       />
       {/* Bottom sheet */}
       <div
+        role="dialog"
+        aria-label={`Word details: ${cleanWord}`}
         className="fixed bottom-0 inset-x-0 z-50 bg-indigo-50 rounded-t-3xl border-t border-indigo-100
                    p-4 md:p-6 pb-6 md:pb-8 shadow-lg max-h-[70vh] overflow-y-auto
                    animate-slide-up overscroll-contain"
         style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
       >
         {/* Drag handle */}
         <div className="flex justify-center mb-3">
@@ -196,44 +119,10 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translatio
       </div>
 
       {/* Syllable accuracy breakdown */}
-      <div className="mb-3 md:mb-4">
-        <div className="flex items-center gap-1 md:gap-2 flex-wrap">
-          {syllables.map((syl, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && <span className="text-gray-300 text-lg md:text-xl mx-0.5">·</span>}
-              <span
-                className={`text-xl md:text-2xl font-semibold px-2 py-0.5 rounded-lg transition-colors ${
-                  hasAssessment ? scoreColor(sylScores[i]) : 'text-gray-700'
-                }`}
-              >
-                {syl}
-              </span>
-            </React.Fragment>
-          ))}
-        </div>
-
-        {hasAssessment && (
-          <div className="flex items-center gap-1 md:gap-2 mt-1.5 flex-wrap">
-            {syllables.map((_syl, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && <span className="w-4" />}
-                <span className="text-xs md:text-sm font-medium text-gray-500 text-center min-w-7">
-                  {scoreEmoji(sylScores[i])} {sylScores[i]}
-                </span>
-              </React.Fragment>
-            ))}
-          </div>
-        )}
-      </div>
+      <SyllableBreakdown word={word} phonemeScores={phonemeScores} />
 
       {/* Translation */}
-      <div className="mb-3 md:mb-4 min-h-7">
-        {translating ? (
-          <span className="text-gray-400 text-sm md:text-base">Translating…</span>
-        ) : translated ? (
-          <span className="text-xl md:text-2xl font-medium text-gray-600" dir={textDir}>{translated}</span>
-        ) : null}
-      </div>
+      <TranslationDisplay word={word} translationMap={translationMap} textDir={textDir} />
 
       {/* Immersive moment media */}
       {moment && (
@@ -293,38 +182,8 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translatio
         >
           🔊 Hear it
         </button>
-        <button
-          type="button"
-          onClick={handlePractice}
-          disabled={practicing}
-          className={`w-full py-2.5 md:py-3 rounded-xl font-bold text-base md:text-lg transition-colors ${
-            practicing
-              ? 'bg-green-200 text-green-700 animate-pulse'
-              : 'bg-green-500 text-white active:bg-green-600'
-          }`}
-        >
-          {practicing ? '🎤 Listening…' : '🎤 Practice this word'}
-        </button>
+        <PracticeButton word={word} onResult={onPracticeResult} />
       </div>
-
-      {/* Practice feedback */}
-      {practiceScore !== null && (
-        <div className={`mt-2 text-center py-2 md:py-3 rounded-xl font-bold text-base md:text-lg ${
-          practiceScore >= 80
-            ? 'bg-green-50 text-green-700'
-            : practiceScore >= 50
-              ? 'bg-amber-50 text-amber-700'
-              : 'bg-red-50 text-red-700'
-        }`}>
-          {practiceScore >= 80 ? '🎉 Great job!' : practiceScore >= 50 ? '👍 Getting closer!' : '💪 Try again!'}{' '}
-          Score: {practiceScore}
-        </div>
-      )}
-      {practiceError && (
-        <div className="mt-2 text-center py-2 rounded-xl bg-gray-50 text-gray-500 text-sm md:text-base">
-          {practiceError}
-        </div>
-      )}
       </div>
     </>
   );

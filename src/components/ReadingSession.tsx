@@ -1,15 +1,12 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import WordCard from './WordCard';
 import WordPopup from './WordPopup';
 import MomentOverlay from './MomentOverlay';
-import type { WordStatus } from './WordCard';
-import { startWindowedPronunciationAssessment } from '../services/speechService';
-import type { WordResult, AssessmentResult } from '../services/speechService';
+import { useAssessment } from '../hooks/useAssessment';
+import { useRecording } from '../hooks/useRecording';
+import { useMoments } from '../hooks/useMoments';
+import type { WordResult } from '../services/speechService';
 import { calculateGamificationScore } from '../services/gamificationService';
-import { analyzeTextForMoments } from '../services/momentsService';
-import { preloadMoments } from '../services/mediaService';
-import type { PreloadedMoment } from '../services/mediaService';
-import { momentCache } from '../data/momentCache';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, batchTranslateText } from '../services/translationService';
 import type { SupportedLanguage, WordTranslationMap } from '../services/translationService';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,11 +20,7 @@ import {
 import { computeNewTrophies, getTrophy } from '../services/trophyService';
 import type { Trophy } from '../services/trophyService';
 
-export interface WordTiming {
-  offsetSec: number;
-  durationSec: number;
-  phonemeScores: number[];
-}
+export type { WordTiming } from '../hooks/useAssessment';
 
 interface ReadingSessionProps {
   text: string;
@@ -45,22 +38,20 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
   const { user } = useAuth();
   const words = useMemo(() => tokenise(text), [text]);
 
-  const [statuses, setStatuses] = useState<Record<number, WordStatus>>({});
-  const [scores, setScores] = useState<Record<number, number>>({});
-  const [listening, setListening] = useState(false);
-  const [sessionDone, setSessionDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fluencyScore, setFluencyScore] = useState<number | undefined>(undefined);
+  const { recordingBlob, startRecording, stopRecording, cleanup: cleanupRecording } = useRecording();
+
+  const {
+    statuses, scores, wordTimings, listening, sessionDone, error,
+    fluencyScore, nextWordIndex, startListening: startAssessment,
+    stopListening: stopAssessment, updateWordResult,
+  } = useAssessment({
+    words,
+    windowSize: WINDOW_SIZE,
+    onSessionDone: stopRecording,
+  });
+
   const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
-
-  // Sequential cursor — tracks the next word to read
-  const [nextWordIndex, setNextWordIndex] = useState(0);
-  const nextWordRef = useRef(0);
-
-  // Immersive moments
   const [immersive, setImmersive] = useState(true);
-  const [moments, setMoments] = useState<PreloadedMoment[]>([]);
-  const [momentsLoading, setMomentsLoading] = useState(false);
 
   // Translation language
   const [targetLang, setTargetLang] = useState<SupportedLanguage>(DEFAULT_LANGUAGE);
@@ -79,159 +70,36 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
 
   // Newly awarded trophies (shown inline after session ends)
   const [newTrophies, setNewTrophies] = useState<Trophy[]>([]);
-  useEffect(() => {
-    if (!immersive) return;
-    let cancelled = false;
-    setMomentsLoading(true);
 
-    const momentsPromise = momentCacheKey && momentCache[momentCacheKey]
-      ? Promise.resolve(momentCache[momentCacheKey])
-      : analyzeTextForMoments(words);
+  // Immersive moments
+  const { moments, momentIndices, loading: momentsLoading } = useMoments({
+    words,
+    momentCacheKey,
+    enabled: immersive,
+  });
 
-    momentsPromise
-      .then((raw) => (!cancelled ? preloadMoments(raw) : []))
-      .then((loaded) => { if (!cancelled) setMoments(loaded); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setMomentsLoading(false); });
-    return () => { cancelled = true; };
-  }, [words, immersive, momentCacheKey]);
-
-  // Audio recording state
-  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
-  const [wordTimings, setWordTimings] = useState<Record<number, WordTiming>>({});
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const micStreamRef = useRef<MediaStream | null>(null);
-
-  const stopRef = useRef<(() => void) | null>(null);
-
-  const handleWordResult = useCallback((result: WordResult) => {
-    const idx = nextWordRef.current;
-    if (idx >= words.length) return;
-
-    const status: WordStatus =
-      result.errorType === 'Omission'
-        ? 'skipped'
-        : result.errorType === 'None' || result.accuracyScore >= 70
-          ? 'correct'
-          : 'mispronounced';
-
-    setStatuses((prev) => ({ ...prev, [idx]: status }));
-    setScores((prev) => ({ ...prev, [idx]: result.accuracyScore }));
-    setWordTimings((prev) => ({
-      ...prev,
-      [idx]: {
-        offsetSec: result.offsetSec,
-        durationSec: result.durationSec,
-        phonemeScores: result.phonemeScores,
-      },
-    }));
-
-    nextWordRef.current = idx + 1;
-    setNextWordIndex(idx + 1);
-  }, [words.length]);
-
-  const handleDone = useCallback((result: AssessmentResult) => {
-    setFluencyScore(result.fluencyScore > 0 ? result.fluencyScore : undefined);
-    setListening(false);
-    setSessionDone(true);
-    stopRecording();
-  }, []);
-
-  const handleError = useCallback((err: string) => {
-    setError(err);
-    setListening(false);
-  }, []);
-
-  const stopRecording = useCallback(() => {
-    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-      recorderRef.current.stop();
-    }
-    micStreamRef.current?.getTracks().forEach((t) => t.stop());
-    micStreamRef.current = null;
-  }, []);
+  // Cleanup recording on unmount
+  useEffect(() => cleanupRecording, [cleanupRecording]);
 
   const startListening = useCallback(async () => {
-    setError(null);
-    setSessionDone(false);
-    setStatuses({});
-    setScores({});
-    setFluencyScore(undefined);
-    setWordTimings({});
-    setRecordingBlob(null);
     setNewTrophies([]);
-    nextWordRef.current = 0;
-    setNextWordIndex(0);
-    chunksRef.current = [];
-
-    // Start mic recording in parallel with the Speech SDK
-    try {
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStreamRef.current = micStream;
-      const recorder = new MediaRecorder(micStream);
-      recorderRef.current = recorder;
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
-        setRecordingBlob(blob);
-      };
-      recorder.start();
-    } catch {
-      // Recording is optional — pronunciation assessment still works without it
-    }
-
-    try {
-      const stop = startWindowedPronunciationAssessment(
-        words,
-        WINDOW_SIZE,
-        handleWordResult,
-        handleDone,
-        handleError,
-      );
-      stopRef.current = stop;
-      setListening(true);
-    } catch (err) {
-      stopRecording();
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [words, handleWordResult, handleDone, handleError, stopRecording]);
+    await startRecording();
+    startAssessment();
+  }, [startRecording, startAssessment]);
 
   const stopListening = useCallback(() => {
-    stopRef.current?.();
-    stopRef.current = null;
+    stopAssessment();
     stopRecording();
-    setListening(false);
-  }, [stopRecording]);
-
-  useEffect(() => {
-    return () => {
-      stopRef.current?.();
-      recorderRef.current?.stop();
-      micStreamRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
+  }, [stopAssessment, stopRecording]);
 
   const handleWordClick = useCallback((_word: string, index: number) => {
     setSelectedWordIndex(index);
   }, []);
 
-  const handlePracticeResult = useCallback((result: import('../services/speechService').WordResult) => {
+  const handlePracticeResult = useCallback((result: WordResult) => {
     if (selectedWordIndex === null) return;
-    const status: WordStatus =
-      result.errorType === 'None' || result.accuracyScore >= 70 ? 'correct' : 'mispronounced';
-    setStatuses((prev) => ({ ...prev, [selectedWordIndex]: status }));
-    setScores((prev) => ({ ...prev, [selectedWordIndex]: result.accuracyScore }));
-    setWordTimings((prev) => ({
-      ...prev,
-      [selectedWordIndex]: {
-        offsetSec: 0,
-        durationSec: 0,
-        phonemeScores: result.phonemeScores,
-      },
-    }));
-  }, [selectedWordIndex]);
+    updateWordResult(selectedWordIndex, result);
+  }, [selectedWordIndex, updateWordResult]);
 
   const gamificationScore = useMemo(
     () => calculateGamificationScore(words, statuses, scores, fluencyScore),
@@ -300,11 +168,6 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
 
   const assessedCount = Object.keys(statuses).length;
   const correctCount = Object.values(statuses).filter((s) => s === 'correct').length;
-
-  const momentIndices = useMemo(
-    () => new Set(immersive ? moments.map((m) => m.wordIndex) : []),
-    [moments, immersive],
-  );
 
   const selectedWord = selectedWordIndex !== null ? words[selectedWordIndex] : null;
   const selectedTiming = selectedWordIndex !== null ? wordTimings[selectedWordIndex] : undefined;

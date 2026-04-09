@@ -4,9 +4,11 @@
     "exclude": ["/assets/*"]
   },
   "globalHeaders": {
-    "Permissions-Policy": "camera=(self), microphone=(self)",
+    "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
     "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY"
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.wikipedia.org https://upload.wikimedia.org https://graph.microsoft.com; connect-src 'self' https://*.cognitiveservices.azure.com https://*.api.cognitive.microsoft.com https://api.cognitive.microsofttranslator.com https://login.microsoftonline.com https://graph.microsoft.com https://*.documents.azure.com; media-src 'self' blob:; font-src 'self'; frame-ancestors 'none'"
   },
   "mimeTypes": {
     ".json": "application/json"
