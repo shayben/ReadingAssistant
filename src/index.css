@@ -8,3 +8,12 @@
 .animate-slide-up {
   animation: slide-up 0.25s ease-out;
 }
+
+@keyframes next-word-pulse {
+  0%, 100% { background-color: rgba(199, 210, 254, 0.5); }
+  50% { background-color: rgba(165, 180, 252, 0.6); }
+}
+
+.animate-next-word {
+  animation: next-word-pulse 1.8s ease-in-out infinite;
+}

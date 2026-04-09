@@ -166,6 +166,94 @@ export function startPronunciationAssessment(
   };
 }
 
+/**
+ * Start a windowed pronunciation assessment.
+ *
+ * Instead of sending the entire text as the reference, the text is broken
+ * into windows of `windowSize` words. Each window runs its own recognition
+ * session. Word offsets are adjusted so they stay cumulative across windows
+ * (aligned with a continuous audio recording).
+ *
+ * Insertions are filtered out — `onWord` only fires for reference words,
+ * one at a time, in strict reading order.
+ */
+export function startWindowedPronunciationAssessment(
+  words: string[],
+  windowSize: number,
+  onWord: WordCallback,
+  onAllDone: DoneCallback,
+  onError: ErrorCallback,
+): () => void {
+  let cursor = 0;
+  let currentStop: (() => void) | null = null;
+  let stopped = false;
+  let doneReported = false;
+  const fluencyAll: number[] = [];
+  const t0 = Date.now();
+
+  function reportDone() {
+    if (doneReported) return;
+    doneReported = true;
+    onAllDone({
+      words: [],
+      pronunciationScore: 0,
+      accuracyScore: 0,
+      fluencyScore:
+        fluencyAll.length > 0
+          ? fluencyAll.reduce((a, b) => a + b, 0) / fluencyAll.length
+          : 0,
+      completenessScore: 0,
+    });
+  }
+
+  function startNextWindow() {
+    if (cursor >= words.length || stopped) {
+      reportDone();
+      return;
+    }
+
+    const windowText = words.slice(cursor, cursor + windowSize).join(' ');
+    const windowCount = Math.min(windowSize, words.length - cursor);
+    let processed = 0;
+    let advancing = false;
+    const elapsed = (Date.now() - t0) / 1000;
+
+    const onWindowWord: WordCallback = (result) => {
+      if (result.errorType === 'Insertion' || advancing || stopped) return;
+
+      onWord({ ...result, offsetSec: result.offsetSec + elapsed });
+      processed++;
+      cursor++;
+
+      if (processed >= windowCount) {
+        advancing = true;
+        currentStop?.();
+      }
+    };
+
+    const onWindowDone: DoneCallback = (result) => {
+      if (result.fluencyScore > 0) fluencyAll.push(result.fluencyScore);
+      if (stopped) { reportDone(); return; }
+      if (advancing) { startNextWindow(); return; }
+      reportDone();
+    };
+
+    currentStop = startPronunciationAssessment(
+      windowText,
+      onWindowWord,
+      onWindowDone,
+      (err) => { if (!stopped) onError(err); },
+    );
+  }
+
+  startNextWindow();
+
+  return () => {
+    stopped = true;
+    currentStop?.();
+  };
+}
+
 /** Synthesise and play the given word using Azure TTS. */
 export function speakWord(word: string): void {
   const speechConfig = getSpeechConfig();

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import WordCard from './WordCard';
 import WordPopup from './WordPopup';
 import type { WordStatus } from './WordCard';
-import { startPronunciationAssessment } from '../services/speechService';
+import { startWindowedPronunciationAssessment } from '../services/speechService';
 import type { WordResult, AssessmentResult } from '../services/speechService';
 import { calculateGamificationScore } from '../services/gamificationService';
 
@@ -17,12 +17,10 @@ interface ReadingSessionProps {
   onReset: () => void;
 }
 
+const WINDOW_SIZE = 5;
+
 function tokenise(text: string): string[] {
   return text.match(/\S+/g) ?? [];
-}
-
-function normalise(word: string): string {
-  return word.replace(/[^a-zA-Z0-9']/g, '').toLowerCase();
 }
 
 const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
@@ -36,6 +34,10 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   const [fluencyScore, setFluencyScore] = useState<number | undefined>(undefined);
   const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
 
+  // Sequential cursor — tracks the next word to read
+  const [nextWordIndex, setNextWordIndex] = useState(0);
+  const nextWordRef = useRef(0);
+
   // Audio recording state
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
   const [wordTimings, setWordTimings] = useState<Record<number, WordTiming>>({});
@@ -45,32 +47,16 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
 
   const stopRef = useRef<(() => void) | null>(null);
 
-  const wordIndexMap = useRef<Record<string, number[]>>({});
-  useEffect(() => {
-    const map: Record<string, number[]> = {};
-    tokenise(text).forEach((w, i) => {
-      const key = normalise(w);
-      if (!map[key]) map[key] = [];
-      map[key].push(i);
-    });
-    wordIndexMap.current = map;
-  }, [text]);
-
-  const matchPointer = useRef<Record<string, number>>({});
-
   const handleWordResult = useCallback((result: WordResult) => {
-    const key = normalise(result.word);
-    const indices = wordIndexMap.current[key];
-    if (!indices) return;
-
-    const pointer = matchPointer.current[key] ?? 0;
-    const idx = indices[pointer];
-    if (idx === undefined) return;
-
-    matchPointer.current[key] = pointer + 1;
+    const idx = nextWordRef.current;
+    if (idx >= words.length) return;
 
     const status: WordStatus =
-      result.errorType === 'None' || result.accuracyScore >= 70 ? 'correct' : 'mispronounced';
+      result.errorType === 'Omission'
+        ? 'skipped'
+        : result.errorType === 'None' || result.accuracyScore >= 70
+          ? 'correct'
+          : 'mispronounced';
 
     setStatuses((prev) => ({ ...prev, [idx]: status }));
     setScores((prev) => ({ ...prev, [idx]: result.accuracyScore }));
@@ -82,12 +68,16 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         phonemeScores: result.phonemeScores,
       },
     }));
-  }, []);
+
+    nextWordRef.current = idx + 1;
+    setNextWordIndex(idx + 1);
+  }, [words.length]);
 
   const handleDone = useCallback((result: AssessmentResult) => {
     setFluencyScore(result.fluencyScore > 0 ? result.fluencyScore : undefined);
     setListening(false);
     setSessionDone(true);
+    stopRecording();
   }, []);
 
   const handleError = useCallback((err: string) => {
@@ -111,7 +101,8 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     setFluencyScore(undefined);
     setWordTimings({});
     setRecordingBlob(null);
-    matchPointer.current = {};
+    nextWordRef.current = 0;
+    setNextWordIndex(0);
     chunksRef.current = [];
 
     // Start mic recording in parallel with the Speech SDK
@@ -133,14 +124,20 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     }
 
     try {
-      const stop = startPronunciationAssessment(text, handleWordResult, handleDone, handleError);
+      const stop = startWindowedPronunciationAssessment(
+        words,
+        WINDOW_SIZE,
+        handleWordResult,
+        handleDone,
+        handleError,
+      );
       stopRef.current = stop;
       setListening(true);
     } catch (err) {
       stopRecording();
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [text, handleWordResult, handleDone, handleError, stopRecording]);
+  }, [words, handleWordResult, handleDone, handleError, stopRecording]);
 
   const stopListening = useCallback(() => {
     stopRef.current?.();
@@ -219,6 +216,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
               word={word}
               index={i}
               status={statuses[i] ?? 'pending'}
+              isNext={listening && i === nextWordIndex}
               score={scores[i]}
               onClick={handleWordClick}
             />
