@@ -41,9 +41,11 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
     const status: WordStatus =
       result.errorType === 'Omission'
         ? 'skipped'
-        : result.errorType === 'None' || result.accuracyScore >= 70
+        : result.errorType === 'None' || result.accuracyScore >= 80
           ? 'correct'
-          : 'mispronounced';
+          : result.accuracyScore >= 50
+            ? 'average'
+            : 'mispronounced';
 
     setStatuses((prev) => ({ ...prev, [idx]: status }));
     setScores((prev) => ({ ...prev, [idx]: result.accuracyScore }));
@@ -104,7 +106,8 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
 
   const updateWordResult = useCallback((index: number, result: WordResult) => {
     const status: WordStatus =
-      result.errorType === 'None' || result.accuracyScore >= 70 ? 'correct' : 'mispronounced';
+      result.errorType === 'None' || result.accuracyScore >= 80 ? 'correct'
+        : result.accuracyScore >= 50 ? 'average' : 'mispronounced';
     setStatuses((prev) => ({ ...prev, [index]: status }));
     setScores((prev) => ({ ...prev, [index]: result.accuracyScore }));
     setWordTimings((prev) => ({

@@ -103,7 +103,7 @@ export function calculateGamificationScore(
 
     if (difficulty === 3) {
       hardWordCount++;
-      if (statuses[idx] === 'correct') hardWordCorrect++;
+      if (statuses[idx] === 'correct' || statuses[idx] === 'average') hardWordCorrect++;
     }
   }
 

@@ -152,7 +152,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
     const sessionId = `${user.uid}_${Date.now()}`;
     const assessedStatuses = Object.entries(statuses);
     const wordsNeedPractice = assessedStatuses
-      .filter(([, s]) => s === 'mispronounced' || s === 'skipped')
+      .filter(([, s]) => s === 'mispronounced' || s === 'skipped' || s === 'average')
       .map(([i]) => words[Number(i)].replace(/[^a-zA-Z']/g, '').toLowerCase())
       .filter(Boolean);
     const wordsNowCorrect = assessedStatuses

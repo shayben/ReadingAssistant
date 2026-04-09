@@ -19,6 +19,7 @@ interface WordCardProps {
 const statusClasses: Record<WordStatus, string> = {
   pending: 'text-gray-800',
   correct: 'text-green-600 bg-green-50 rounded',
+  average: 'text-orange-600 bg-orange-50 rounded',
   mispronounced: 'text-red-600 bg-red-50 rounded',
   skipped: 'text-yellow-600 bg-yellow-50 rounded',
 };
