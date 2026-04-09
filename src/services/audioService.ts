@@ -1,6 +1,8 @@
 /**
  * Web Audio API service for ambient soundscapes and contextual sound effects.
- * All sounds are synthesized procedurally — no external audio files needed.
+ * Ambient audio prefers pre-recorded MP3 loops from /audio/ambient/{category}.mp3.
+ * Falls back to warm musical pad synthesis when audio files aren't available.
+ * Sound effects are always synthesized procedurally.
  */
 
 // ─── AudioContext singleton ──────────────────────────────────────
@@ -40,13 +42,20 @@ function noiseBuffer(seconds: number): AudioBuffer {
   return buf;
 }
 
-function loopNoise(seconds: number, dest: AudioNode): AudioBufferSourceNode {
+
+/** Generate brownian (red) noise — much smoother than white noise. */
+function brownianNoiseBuffer(seconds: number): AudioBuffer {
   const c = getCtx();
-  const src = c.createBufferSource();
-  src.buffer = noiseBuffer(seconds);
-  src.loop = true;
-  src.connect(dest);
-  return src;
+  const frames = c.sampleRate * seconds;
+  const buf = c.createBuffer(1, frames, c.sampleRate);
+  const d = buf.getChannelData(0);
+  let v = 0;
+  for (let i = 0; i < frames; i++) {
+    v += (Math.random() * 2 - 1) * 0.06;
+    v = Math.max(-1, Math.min(1, v));
+    d[i] = v;
+  }
+  return buf;
 }
 
 /** Slowly ramp a param to a target over `dur` seconds. */
@@ -55,6 +64,8 @@ function ramp(param: AudioParam, target: number, dur: number) {
 }
 
 // ─── Ambient Soundscape Engine ───────────────────────────────────
+// Prefers pre-recorded audio files from /audio/ambient/{category}.mp3.
+// Falls back to warm musical pad synthesis when files aren't available.
 
 export type AmbientCategory =
   | 'nature' | 'ocean' | 'space' | 'peaceful'
@@ -65,433 +76,208 @@ interface AmbientHandle { stop(): void }
 let currentAmbient: AmbientHandle | null = null;
 let currentCategory: AmbientCategory | null = null;
 
-// ── Individual ambient generators ────────────────────────────────
-// Each returns a stop() handle. All connect to ambientGain.
+// ── Audio file cache ─────────────────────────────────────────────
 
-function ambientNature(): AmbientHandle {
+const audioFileCache = new Map<string, AudioBuffer | false>();
+
+async function tryLoadAudioFile(category: AmbientCategory): Promise<AudioBuffer | null> {
+  const cached = audioFileCache.get(category);
+  if (cached === false) return null;
+  if (cached) return cached;
+  try {
+    const res = await fetch(`/audio/ambient/${category}.mp3`);
+    if (!res.ok) { audioFileCache.set(category, false); return null; }
+    const buf = await getCtx().decodeAudioData(await res.arrayBuffer());
+    audioFileCache.set(category, buf);
+    return buf;
+  } catch {
+    audioFileCache.set(category, false);
+    return null;
+  }
+}
+
+function playAudioFile(buffer: AudioBuffer): AmbientHandle {
+  const c = getCtx();
+  const source = c.createBufferSource();
+  source.buffer = buffer;
+  source.loop = true;
+  source.connect(ambientGain!);
+  source.start();
+  return { stop() { try { source.stop(); } catch { /* ok */ } } };
+}
+
+// ── Musical pad synthesis (fallback) ─────────────────────────────
+
+function midiToFreq(note: number): number {
+  return 440 * Math.pow(2, (note - 69) / 12);
+}
+
+interface PadConfig {
+  notes: number[];
+  waveform: OscillatorType;
+  detuneSpread: number;
+  filterFreq: number;
+  filterLfoFreq: number;
+  filterLfoDepth: number;
+  attackTime: number;
+  voiceVolume: number;
+  useNoise?: boolean;
+  noiseVolume?: number;
+}
+
+// Each category maps to a warm chord played with detuned oscillators
+// through a slowly-modulated lowpass filter + subtle delay reverb.
+const PAD_CONFIGS: Record<AmbientCategory, PadConfig> = {
+  nature: {
+    notes: [60, 64, 67, 72],       // C E G C' (C major — bright, open)
+    waveform: 'sine', detuneSpread: 6, filterFreq: 1800,
+    filterLfoFreq: 0.05, filterLfoDepth: 400, attackTime: 4,
+    voiceVolume: 0.025, useNoise: true, noiseVolume: 0.035,
+  },
+  ocean: {
+    notes: [48, 53, 60, 65],       // C3 F3 C4 F4 (deep, flowing)
+    waveform: 'sine', detuneSpread: 10, filterFreq: 1200,
+    filterLfoFreq: 0.04, filterLfoDepth: 500, attackTime: 5,
+    voiceVolume: 0.02, useNoise: true, noiseVolume: 0.05,
+  },
+  space: {
+    notes: [45, 52, 57, 64],       // A2 E3 A3 E4 (open fifths — ethereal)
+    waveform: 'sine', detuneSpread: 15, filterFreq: 2500,
+    filterLfoFreq: 0.02, filterLfoDepth: 800, attackTime: 6,
+    voiceVolume: 0.02,
+  },
+  peaceful: {
+    notes: [55, 59, 62, 67],       // G3 B3 D4 G4 (G major — gentle)
+    waveform: 'sine', detuneSpread: 5, filterFreq: 2000,
+    filterLfoFreq: 0.06, filterLfoDepth: 300, attackTime: 3,
+    voiceVolume: 0.025,
+  },
+  mysterious: {
+    notes: [46, 53, 58, 61],       // Bb2 F3 Bb3 Db4 (Bb minor — dark)
+    waveform: 'triangle', detuneSpread: 12, filterFreq: 1000,
+    filterLfoFreq: 0.03, filterLfoDepth: 300, attackTime: 5,
+    voiceVolume: 0.02,
+  },
+  dramatic: {
+    notes: [45, 48, 52, 57],       // A2 C3 E3 A3 (A minor — tense)
+    waveform: 'triangle', detuneSpread: 8, filterFreq: 1500,
+    filterLfoFreq: 0.07, filterLfoDepth: 600, attackTime: 4,
+    voiceVolume: 0.025, useNoise: true, noiseVolume: 0.02,
+  },
+  adventure: {
+    notes: [52, 56, 59, 64],       // E3 G#3 B3 E4 (E major — energetic)
+    waveform: 'triangle', detuneSpread: 5, filterFreq: 2500,
+    filterLfoFreq: 0.08, filterLfoDepth: 500, attackTime: 3,
+    voiceVolume: 0.025,
+  },
+  celebration: {
+    notes: [62, 66, 69, 74],       // D4 F#4 A4 D5 (D major — joyful)
+    waveform: 'sine', detuneSpread: 4, filterFreq: 3000,
+    filterLfoFreq: 0.1, filterLfoDepth: 500, attackTime: 2,
+    voiceVolume: 0.02,
+  },
+};
+
+function createMusicalPad(config: PadConfig): AmbientHandle {
   const c = getCtx();
   const dest = ambientGain!;
+  const allNodes: (OscillatorNode | AudioBufferSourceNode)[] = [];
 
-  // Wind — bandpass-filtered noise
-  const wind = loopNoise(4, c.createGain());
-  const windFilter = c.createBiquadFilter();
-  windFilter.type = 'bandpass';
-  windFilter.frequency.value = 700;
-  windFilter.Q.value = 0.4;
-  const windVol = c.createGain();
-  windVol.gain.value = 0.35;
-  wind.disconnect();
-  wind.connect(windFilter).connect(windVol).connect(dest);
-  wind.start();
+  // Lowpass filter for warmth
+  const filter = c.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = config.filterFreq;
+  filter.Q.value = 0.7;
+  filter.connect(dest);
 
-  // LFO on wind filter frequency for gentle gusts
+  // Slow LFO modulates filter cutoff for gentle movement
   const lfo = c.createOscillator();
   lfo.type = 'sine';
-  lfo.frequency.value = 0.15;
+  lfo.frequency.value = config.filterLfoFreq;
   const lfoGain = c.createGain();
-  lfoGain.gain.value = 300;
-  lfo.connect(lfoGain).connect(windFilter.frequency);
+  lfoGain.gain.value = config.filterLfoDepth;
+  lfo.connect(lfoGain).connect(filter.frequency);
   lfo.start();
+  allNodes.push(lfo);
 
-  // Bird chirps at random intervals
-  let birdsAlive = true;
-  function chirp() {
-    if (!birdsAlive) return;
-    const osc = c.createOscillator();
-    osc.type = 'sine';
-    const base = 2500 + Math.random() * 2000;
-    const t = c.currentTime;
-    osc.frequency.setValueAtTime(base, t);
-    osc.frequency.exponentialRampToValueAtTime(base * 1.4, t + 0.04);
-    osc.frequency.exponentialRampToValueAtTime(base * 0.7, t + 0.1);
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.06, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-    osc.connect(g).connect(dest);
-    osc.start(t);
-    osc.stop(t + 0.13);
-    setTimeout(chirp, 2500 + Math.random() * 6000);
+  // Simple feedback delay for subtle reverb / spaciousness
+  const delay = c.createDelay(1);
+  delay.delayTime.value = 0.3;
+  const feedback = c.createGain();
+  feedback.gain.value = 0.2;
+  delay.connect(feedback);
+  feedback.connect(delay);
+  const delayMix = c.createGain();
+  delayMix.gain.value = 0.15;
+  delay.connect(delayMix);
+  delayMix.connect(filter);
+
+  // Two detuned oscillators per note create a warm "unison" pad
+  for (const note of config.notes) {
+    const freq = midiToFreq(note);
+    for (const det of [-config.detuneSpread, config.detuneSpread]) {
+      const osc = c.createOscillator();
+      osc.type = config.waveform;
+      osc.frequency.value = freq;
+      osc.detune.value = det;
+      const g = c.createGain();
+      g.gain.value = 0;
+      g.gain.setTargetAtTime(
+        config.voiceVolume / config.notes.length,
+        c.currentTime,
+        config.attackTime / 3,
+      );
+      osc.connect(g);
+      g.connect(filter);
+      g.connect(delay);
+      osc.start();
+      allNodes.push(osc);
+    }
   }
-  setTimeout(chirp, 800);
+
+  // Optional smooth brownian noise texture (nature, ocean, dramatic)
+  if (config.useNoise && config.noiseVolume) {
+    const noiseBuf = brownianNoiseBuffer(8);
+    const src = c.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    const nFilt = c.createBiquadFilter();
+    nFilt.type = 'lowpass';
+    nFilt.frequency.value = 600;
+    nFilt.Q.value = 0.5;
+    const ng = c.createGain();
+    ng.gain.value = 0;
+    ng.gain.setTargetAtTime(config.noiseVolume, c.currentTime, config.attackTime / 3);
+    src.connect(nFilt).connect(ng).connect(dest);
+    src.start();
+    allNodes.push(src);
+  }
 
   return {
     stop() {
-      birdsAlive = false;
-      try { wind.stop(); } catch { /* ok */ }
-      try { lfo.stop(); } catch { /* ok */ }
+      allNodes.forEach((n) => { try { n.stop(); } catch { /* ok */ } });
     },
   };
 }
-
-function ambientOcean(): AmbientHandle {
-  const c = getCtx();
-  const dest = ambientGain!;
-
-  // Base surf — low-pass filtered noise
-  const surf = loopNoise(6, c.createGain());
-  const lpf = c.createBiquadFilter();
-  lpf.type = 'lowpass';
-  lpf.frequency.value = 400;
-  lpf.Q.value = 1;
-  const surfVol = c.createGain();
-  surfVol.gain.value = 0.4;
-  surf.disconnect();
-  surf.connect(lpf).connect(surfVol).connect(dest);
-  surf.start();
-
-  // Slow wave modulation on filter cutoff
-  const waveLfo = c.createOscillator();
-  waveLfo.type = 'sine';
-  waveLfo.frequency.value = 0.08;
-  const waveDepth = c.createGain();
-  waveDepth.gain.value = 250;
-  waveLfo.connect(waveDepth).connect(lpf.frequency);
-  waveLfo.start();
-
-  // Higher "foam" layer
-  const foam = loopNoise(3, c.createGain());
-  const hpf = c.createBiquadFilter();
-  hpf.type = 'highpass';
-  hpf.frequency.value = 3000;
-  const foamVol = c.createGain();
-  foamVol.gain.value = 0.08;
-  foam.disconnect();
-  foam.connect(hpf).connect(foamVol).connect(dest);
-  foam.start();
-
-  // Foam volume modulation — waves crash in and out
-  const foamLfo = c.createOscillator();
-  foamLfo.type = 'sine';
-  foamLfo.frequency.value = 0.06;
-  const foamLfoGain = c.createGain();
-  foamLfoGain.gain.value = 0.06;
-  foamLfo.connect(foamLfoGain).connect(foamVol.gain);
-  foamLfo.start();
-
-  return {
-    stop() {
-      try { surf.stop(); } catch { /* ok */ }
-      try { waveLfo.stop(); } catch { /* ok */ }
-      try { foam.stop(); } catch { /* ok */ }
-      try { foamLfo.stop(); } catch { /* ok */ }
-    },
-  };
-}
-
-function ambientSpace(): AmbientHandle {
-  const c = getCtx();
-  const dest = ambientGain!;
-
-  // Deep drone — detuned sine waves
-  const oscs: OscillatorNode[] = [];
-  const freqs = [55, 55.5, 82, 82.7]; // Low A + slightly detuned
-  for (const f of freqs) {
-    const osc = c.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = f;
-    const g = c.createGain();
-    g.gain.value = 0.12;
-    osc.connect(g).connect(dest);
-    osc.start();
-    oscs.push(osc);
-  }
-
-  // Ethereal shimmer — high sine with slow tremolo
-  const shimmer = c.createOscillator();
-  shimmer.type = 'sine';
-  shimmer.frequency.value = 880;
-  const shimmerVol = c.createGain();
-  shimmerVol.gain.value = 0.03;
-  shimmer.connect(shimmerVol).connect(dest);
-  shimmer.start();
-  oscs.push(shimmer);
-
-  const trem = c.createOscillator();
-  trem.type = 'sine';
-  trem.frequency.value = 0.3;
-  const tremDepth = c.createGain();
-  tremDepth.gain.value = 0.02;
-  trem.connect(tremDepth).connect(shimmerVol.gain);
-  trem.start();
-  oscs.push(trem);
-
-  return {
-    stop() { oscs.forEach((o) => { try { o.stop(); } catch { /* ok */ } }); },
-  };
-}
-
-function ambientPeaceful(): AmbientHandle {
-  const c = getCtx();
-  const dest = ambientGain!;
-
-  // Gentle pad cycling through pentatonic notes
-  const notes = [261.6, 293.7, 329.6, 392.0, 440.0]; // C4 pentatonic
-  let alive = true;
-  const activeOscs: OscillatorNode[] = [];
-
-  function playNote() {
-    if (!alive) return;
-    const freq = notes[Math.floor(Math.random() * notes.length)];
-    const osc = c.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
-    const g = c.createGain();
-    const t = c.currentTime;
-    g.gain.setValueAtTime(0.001, t);
-    g.gain.linearRampToValueAtTime(0.06, t + 1.5);
-    g.gain.linearRampToValueAtTime(0.001, t + 4);
-    osc.connect(g).connect(dest);
-    osc.start(t);
-    osc.stop(t + 4.1);
-    activeOscs.push(osc);
-    setTimeout(playNote, 2000 + Math.random() * 3000);
-  }
-  playNote();
-
-  // Soft wind bed
-  const wind = loopNoise(3, c.createGain());
-  const filt = c.createBiquadFilter();
-  filt.type = 'lowpass';
-  filt.frequency.value = 500;
-  const wg = c.createGain();
-  wg.gain.value = 0.08;
-  wind.disconnect();
-  wind.connect(filt).connect(wg).connect(dest);
-  wind.start();
-
-  return {
-    stop() {
-      alive = false;
-      try { wind.stop(); } catch { /* ok */ }
-      activeOscs.forEach((o) => { try { o.stop(); } catch { /* ok */ } });
-    },
-  };
-}
-
-function ambientMysterious(): AmbientHandle {
-  const c = getCtx();
-  const dest = ambientGain!;
-
-  // Low minor drone
-  const drone1 = c.createOscillator();
-  drone1.type = 'sine';
-  drone1.frequency.value = 73.4; // D2
-  const drone2 = c.createOscillator();
-  drone2.type = 'sine';
-  drone2.frequency.value = 87.3; // F2 (minor third)
-  const dg = c.createGain();
-  dg.gain.value = 0.12;
-  drone1.connect(dg).connect(dest);
-  drone2.connect(dg);
-  drone1.start();
-  drone2.start();
-
-  // Slow tremolo
-  const trem = c.createOscillator();
-  trem.type = 'sine';
-  trem.frequency.value = 0.2;
-  const td = c.createGain();
-  td.gain.value = 0.05;
-  trem.connect(td).connect(dg.gain);
-  trem.start();
-
-  // Eerie high tones at random intervals
-  let alive = true;
-  function eerieNote() {
-    if (!alive) return;
-    const osc = c.createOscillator();
-    osc.type = 'sine';
-    const freq = 600 + Math.random() * 800;
-    osc.frequency.value = freq;
-    const g = c.createGain();
-    const t = c.currentTime;
-    g.gain.setValueAtTime(0.001, t);
-    g.gain.linearRampToValueAtTime(0.03, t + 1);
-    g.gain.linearRampToValueAtTime(0.001, t + 3);
-    osc.connect(g).connect(dest);
-    osc.start(t);
-    osc.stop(t + 3.1);
-    setTimeout(eerieNote, 4000 + Math.random() * 6000);
-  }
-  setTimeout(eerieNote, 2000);
-
-  return {
-    stop() {
-      alive = false;
-      [drone1, drone2, trem].forEach((o) => { try { o.stop(); } catch { /* ok */ } });
-    },
-  };
-}
-
-function ambientDramatic(): AmbientHandle {
-  const c = getCtx();
-  const dest = ambientGain!;
-
-  // Low rumble
-  const rumble = loopNoise(4, c.createGain());
-  const lpf = c.createBiquadFilter();
-  lpf.type = 'lowpass';
-  lpf.frequency.value = 150;
-  lpf.Q.value = 2;
-  const rv = c.createGain();
-  rv.gain.value = 0.3;
-  rumble.disconnect();
-  rumble.connect(lpf).connect(rv).connect(dest);
-  rumble.start();
-
-  // Heartbeat-like pulse
-  let alive = true;
-  function pulse() {
-    if (!alive) return;
-    const osc = c.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = 50;
-    const g = c.createGain();
-    const t = c.currentTime;
-    g.gain.setValueAtTime(0.001, t);
-    g.gain.linearRampToValueAtTime(0.15, t + 0.05);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
-    osc.connect(g).connect(dest);
-    osc.start(t);
-    osc.stop(t + 0.5);
-    // Double beat
-    setTimeout(() => {
-      if (!alive) return;
-      const o2 = c.createOscillator();
-      o2.type = 'sine';
-      o2.frequency.value = 50;
-      const g2 = c.createGain();
-      const t2 = c.currentTime;
-      g2.gain.setValueAtTime(0.001, t2);
-      g2.gain.linearRampToValueAtTime(0.1, t2 + 0.04);
-      g2.gain.exponentialRampToValueAtTime(0.001, t2 + 0.3);
-      o2.connect(g2).connect(dest);
-      o2.start(t2);
-      o2.stop(t2 + 0.35);
-    }, 250);
-    setTimeout(pulse, 1800);
-  }
-  setTimeout(pulse, 500);
-
-  return {
-    stop() {
-      alive = false;
-      try { rumble.stop(); } catch { /* ok */ }
-    },
-  };
-}
-
-function ambientAdventure(): AmbientHandle {
-  const c = getCtx();
-  const dest = ambientGain!;
-
-  // Bright pad — major triad
-  const freqs = [261.6, 329.6, 392.0]; // C-E-G
-  const oscs: OscillatorNode[] = [];
-  for (const f of freqs) {
-    const osc = c.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.value = f;
-    const g = c.createGain();
-    g.gain.value = 0.06;
-    osc.connect(g).connect(dest);
-    osc.start();
-    oscs.push(osc);
-  }
-
-  // Light rhythmic element — soft taps
-  let alive = true;
-  function tap() {
-    if (!alive) return;
-    const noise = c.createBufferSource();
-    noise.buffer = noiseBuffer(0.03);
-    const bp = c.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 4000;
-    bp.Q.value = 2;
-    const g = c.createGain();
-    const t = c.currentTime;
-    g.gain.setValueAtTime(0.08, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-    noise.connect(bp).connect(g).connect(dest);
-    noise.start(t);
-    setTimeout(tap, 600);
-  }
-  setTimeout(tap, 300);
-
-  return {
-    stop() {
-      alive = false;
-      oscs.forEach((o) => { try { o.stop(); } catch { /* ok */ } });
-    },
-  };
-}
-
-function ambientCelebration(): AmbientHandle {
-  const c = getCtx();
-  const dest = ambientGain!;
-
-  // Bright shimmering major chord
-  const freqs = [523.3, 659.3, 784.0, 1046.5]; // C5-E5-G5-C6
-  const oscs: OscillatorNode[] = [];
-  for (const f of freqs) {
-    const osc = c.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = f;
-    const g = c.createGain();
-    g.gain.value = 0.04;
-    osc.connect(g).connect(dest);
-    osc.start();
-    oscs.push(osc);
-  }
-
-  // Sparkle effect — random high pings
-  let alive = true;
-  function sparkle() {
-    if (!alive) return;
-    const osc = c.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = 1500 + Math.random() * 3000;
-    const g = c.createGain();
-    const t = c.currentTime;
-    g.gain.setValueAtTime(0.06, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-    osc.connect(g).connect(dest);
-    osc.start(t);
-    osc.stop(t + 0.22);
-    setTimeout(sparkle, 400 + Math.random() * 800);
-  }
-  setTimeout(sparkle, 200);
-
-  return {
-    stop() {
-      alive = false;
-      oscs.forEach((o) => { try { o.stop(); } catch { /* ok */ } });
-    },
-  };
-}
-
-const ambientGenerators: Record<AmbientCategory, () => AmbientHandle> = {
-  nature: ambientNature,
-  ocean: ambientOcean,
-  space: ambientSpace,
-  peaceful: ambientPeaceful,
-  mysterious: ambientMysterious,
-  dramatic: ambientDramatic,
-  adventure: ambientAdventure,
-  celebration: ambientCelebration,
-};
 
 // ─── Ambient Public API ──────────────────────────────────────────
 
 const AMBIENT_FADE_SEC = 2;
 
-export function startAmbient(category: AmbientCategory): void {
-  if (currentCategory === category && currentAmbient) return; // already playing
+export async function startAmbient(category: AmbientCategory): Promise<void> {
+  if (currentCategory === category && currentAmbient) return;
   stopAmbient();
-  getCtx(); // ensure context exists
+  getCtx();
   currentCategory = category;
-  currentAmbient = ambientGenerators[category]();
+
+  // Try pre-recorded audio files first, fall back to pad synthesis
+  const buffer = await tryLoadAudioFile(category);
+  if (currentCategory !== category) return; // category changed while loading
+
+  currentAmbient = buffer
+    ? playAudioFile(buffer)
+    : createMusicalPad(PAD_CONFIGS[category]);
+
   ramp(ambientGain!.gain, 0.12, AMBIENT_FADE_SEC);
 }
 
