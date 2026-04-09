@@ -108,44 +108,44 @@ export default function App() {
   // ── Home: camera button + demo levels ──
   if (step === 'home') {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-6 p-6 pt-12">
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-6 md:gap-8 p-6 pt-12 md:pt-16">
         <canvas ref={canvasRef} className="hidden" />
-        <h1 className="text-3xl font-bold text-indigo-700">📖 Reading Assistant</h1>
+        <h1 className="text-3xl md:text-4xl font-bold text-indigo-700">📖 Reading Assistant</h1>
 
         {error && (
-          <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3 max-w-xs">{error}</p>
+          <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3 max-w-xs md:max-w-md">{error}</p>
         )}
 
         <button
           type="button"
           onClick={openCamera}
-          className="w-28 h-28 rounded-full bg-indigo-600 text-white text-5xl
+          className="w-28 h-28 md:w-36 md:h-36 rounded-full bg-indigo-600 text-white text-5xl md:text-6xl
                      flex items-center justify-center shadow-xl
                      active:bg-indigo-700 active:scale-95 transition-all"
         >
           📷
         </button>
-        <p className="text-gray-400 text-sm">Tap to scan your reading</p>
+        <p className="text-gray-400 text-sm md:text-base">Tap to scan your reading</p>
 
         {/* Divider */}
-        <div className="flex items-center gap-3 w-full max-w-xs">
+        <div className="flex items-center gap-3 w-full max-w-xs md:max-w-md">
           <hr className="flex-1 border-gray-200" />
-          <span className="text-gray-400 text-sm font-medium">or try a story</span>
+          <span className="text-gray-400 text-sm md:text-base font-medium">or try a story</span>
           <hr className="flex-1 border-gray-200" />
         </div>
 
         {/* Reading level grid */}
-        <div className="grid grid-cols-4 gap-2 w-full max-w-xs">
+        <div className="grid grid-cols-4 md:grid-cols-7 gap-2 md:gap-3 w-full max-w-xs md:max-w-lg">
           {readingLevels.map((level) => (
             <button
               key={level.grade}
               type="button"
               onClick={() => handleDemoLevel(level)}
-              className="flex flex-col items-center gap-1 py-3 px-1 rounded-2xl bg-white border border-gray-100
+              className="flex flex-col items-center gap-1 py-3 md:py-4 px-1 rounded-2xl bg-white border border-gray-100
                          shadow-sm active:bg-indigo-50 active:border-indigo-200 transition-colors"
             >
-              <span className="text-2xl">{level.emoji}</span>
-              <span className="text-xs font-semibold text-gray-600">
+              <span className="text-2xl md:text-3xl">{level.emoji}</span>
+              <span className="text-xs md:text-sm font-semibold text-gray-600">
                 {level.grade === 'K' ? 'K' : level.grade}
               </span>
             </button>
@@ -158,31 +158,31 @@ export default function App() {
   // ── Demo: pick a paragraph ──
   if (step === 'demo-pick' && demoLevel) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white p-6 pt-8">
-        <div className="max-w-lg mx-auto">
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white p-6 md:p-10 pt-8">
+        <div className="max-w-lg md:max-w-2xl mx-auto">
           <button
             type="button"
             onClick={handleReset}
-            className="text-indigo-500 font-medium text-sm mb-4"
+            className="text-indigo-500 font-medium text-sm md:text-base mb-4"
           >
             ← Back
           </button>
-          <h2 className="text-2xl font-bold text-indigo-700 mb-1">
+          <h2 className="text-2xl md:text-3xl font-bold text-indigo-700 mb-1">
             {demoLevel.emoji} {demoLevel.label}
           </h2>
-          <p className="text-gray-400 text-sm mb-5">Pick a story to read</p>
+          <p className="text-gray-400 text-sm md:text-base mb-5">Pick a story to read</p>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col md:grid md:grid-cols-2 gap-3 md:gap-4">
             {demoLevel.paragraphs.map((p, i) => (
               <button
                 key={i}
                 type="button"
                 onClick={() => handleDemoParagraph(p)}
-                className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4
+                className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-5
                            active:bg-indigo-50 active:border-indigo-200 transition-colors"
               >
-                <p className="font-semibold text-indigo-700 text-lg mb-1">{p.title}</p>
-                <p className="text-gray-500 text-sm line-clamp-2">{p.text}</p>
+                <p className="font-semibold text-indigo-700 text-lg md:text-xl mb-1">{p.title}</p>
+                <p className="text-gray-500 text-sm md:text-base line-clamp-2">{p.text}</p>
               </button>
             ))}
           </div>
@@ -232,8 +232,8 @@ export default function App() {
   if (step === 'processing') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center justify-center gap-4">
-        <div className="w-14 h-14 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-        <p className="text-indigo-600 font-medium text-lg">Reading your text…</p>
+        <div className="w-14 h-14 md:w-18 md:h-18 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+        <p className="text-indigo-600 font-medium text-lg md:text-xl">Reading your text…</p>
       </div>
     );
   }
@@ -241,7 +241,7 @@ export default function App() {
   // ── Reading session ──
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white">
-      <main className="pb-8 pt-2">
+      <main className="pb-8 pt-2 md:pt-6">
         <ReadingSession text={assignmentText} onReset={handleReset} />
       </main>
     </div>

@@ -174,27 +174,27 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
   }, [cleanWord]);
 
   return (
-    <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-4 shadow-sm">
+    <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-4 md:p-6 shadow-sm">
       {/* Header: word + close */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-2xl font-bold text-indigo-700">{cleanWord}</span>
+        <span className="text-2xl md:text-3xl font-bold text-indigo-700">{cleanWord}</span>
         <button
           type="button"
           onClick={onClose}
-          className="text-gray-400 text-xl px-2 active:text-gray-600"
+          className="text-gray-400 text-xl md:text-2xl px-2 active:text-gray-600"
         >
           ✕
         </button>
       </div>
 
       {/* Syllable accuracy breakdown */}
-      <div className="mb-3">
-        <div className="flex items-center gap-1 flex-wrap">
+      <div className="mb-3 md:mb-4">
+        <div className="flex items-center gap-1 md:gap-2 flex-wrap">
           {syllables.map((syl, i) => (
             <React.Fragment key={i}>
-              {i > 0 && <span className="text-gray-300 text-lg mx-0.5">·</span>}
+              {i > 0 && <span className="text-gray-300 text-lg md:text-xl mx-0.5">·</span>}
               <span
-                className={`text-xl font-semibold px-2 py-0.5 rounded-lg transition-colors ${
+                className={`text-xl md:text-2xl font-semibold px-2 py-0.5 rounded-lg transition-colors ${
                   hasAssessment ? scoreColor(sylScores[i]) : 'text-gray-700'
                 }`}
               >
@@ -205,11 +205,11 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
         </div>
 
         {hasAssessment && (
-          <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+          <div className="flex items-center gap-1 md:gap-2 mt-1.5 flex-wrap">
             {syllables.map((_syl, i) => (
               <React.Fragment key={i}>
                 {i > 0 && <span className="w-4" />}
-                <span className="text-xs font-medium text-gray-500 text-center min-w-7">
+                <span className="text-xs md:text-sm font-medium text-gray-500 text-center min-w-7">
                   {scoreEmoji(sylScores[i])} {sylScores[i]}
                 </span>
               </React.Fragment>
@@ -219,22 +219,22 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
       </div>
 
       {/* Hebrew translation */}
-      <div className="mb-3 min-h-7">
+      <div className="mb-3 md:mb-4 min-h-7">
         {translating ? (
-          <span className="text-gray-400 text-sm">Translating…</span>
+          <span className="text-gray-400 text-sm md:text-base">Translating…</span>
         ) : hebrew ? (
-          <span className="text-xl font-medium text-gray-600" dir="rtl">{hebrew}</span>
+          <span className="text-xl md:text-2xl font-medium text-gray-600" dir="rtl">{hebrew}</span>
         ) : null}
       </div>
 
       {/* Action buttons */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 md:gap-3 flex-wrap">
         {hasRecording && (
           <button
             type="button"
             onClick={handlePlayRecording}
             disabled={playingBack}
-            className={`flex-1 py-2.5 rounded-xl font-bold text-base transition-colors ${
+            className={`flex-1 py-2.5 md:py-3 rounded-xl font-bold text-base md:text-lg transition-colors ${
               playingBack
                 ? 'bg-amber-200 text-amber-700'
                 : 'bg-amber-400 text-amber-900 active:bg-amber-500'
@@ -246,7 +246,7 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
         <button
           type="button"
           onClick={handlePlayCorrect}
-          className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white font-bold text-base
+          className="flex-1 py-2.5 md:py-3 rounded-xl bg-indigo-500 text-white font-bold text-base md:text-lg
                      active:bg-indigo-600 transition-colors"
         >
           🔊 Hear it
@@ -255,7 +255,7 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
           type="button"
           onClick={handlePractice}
           disabled={practicing}
-          className={`w-full py-2.5 rounded-xl font-bold text-base transition-colors ${
+          className={`w-full py-2.5 md:py-3 rounded-xl font-bold text-base md:text-lg transition-colors ${
             practicing
               ? 'bg-green-200 text-green-700 animate-pulse'
               : 'bg-green-500 text-white active:bg-green-600'
@@ -267,7 +267,7 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
 
       {/* Practice feedback */}
       {practiceScore !== null && (
-        <div className={`mt-2 text-center py-2 rounded-xl font-bold text-base ${
+        <div className={`mt-2 text-center py-2 md:py-3 rounded-xl font-bold text-base md:text-lg ${
           practiceScore >= 80
             ? 'bg-green-50 text-green-700'
             : practiceScore >= 50
@@ -279,7 +279,7 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
         </div>
       )}
       {practiceError && (
-        <div className="mt-2 text-center py-2 rounded-xl bg-gray-50 text-gray-500 text-sm">
+        <div className="mt-2 text-center py-2 rounded-xl bg-gray-50 text-gray-500 text-sm md:text-base">
           {practiceError}
         </div>
       )}

@@ -77,7 +77,7 @@ const MomentOverlay: React.FC<MomentOverlayProps> = ({ moments, currentWordIndex
   return (
     <div
       className={`
-        fixed top-20 right-3 z-30 max-w-44 pointer-events-auto
+        fixed top-20 md:top-24 right-3 md:right-6 z-30 max-w-44 md:max-w-56 pointer-events-auto
         transition-all duration-500 ease-out
         ${visible ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 translate-x-8 scale-95'}
       `}
@@ -90,7 +90,7 @@ const MomentOverlay: React.FC<MomentOverlayProps> = ({ moments, currentWordIndex
           className="w-full rounded-2xl shadow-lg border-2 border-white/80"
         />
       )}
-      <p className="mt-1.5 text-[11px] leading-tight text-center text-gray-600 bg-white/90 rounded-xl px-2 py-1.5 shadow-sm">
+      <p className="mt-1.5 text-[11px] md:text-xs leading-tight text-center text-gray-600 bg-white/90 rounded-xl px-2 py-1.5 shadow-sm">
         💡 {active.caption}
       </p>
     </div>

@@ -207,14 +207,14 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   const selectedTiming = selectedWordIndex !== null ? wordTimings[selectedWordIndex] : undefined;
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-lg mx-auto p-4">
+    <div className="flex flex-col gap-4 md:gap-6 w-full max-w-lg md:max-w-2xl mx-auto p-4 md:p-8">
       {/* Controls at the top */}
       <div className="flex gap-3">
         {!listening ? (
           <button
             type="button"
             onClick={startListening}
-            className="flex-1 py-4 rounded-2xl bg-green-500 text-white font-bold text-xl
+            className="flex-1 py-4 md:py-5 rounded-2xl bg-green-500 text-white font-bold text-xl md:text-2xl
                        active:bg-green-600 transition-colors shadow-md"
           >
             🎤 {sessionDone ? 'Try Again!' : 'Read Aloud'}
@@ -223,7 +223,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           <button
             type="button"
             onClick={stopListening}
-            className="flex-1 py-4 rounded-2xl bg-red-500 text-white font-bold text-xl
+            className="flex-1 py-4 md:py-5 rounded-2xl bg-red-500 text-white font-bold text-xl md:text-2xl
                        active:bg-red-600 transition-colors shadow-md animate-pulse"
           >
             ⏹ Done
@@ -232,7 +232,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         <button
           type="button"
           onClick={() => setImmersive((v) => !v)}
-          className={`py-4 px-5 rounded-2xl font-bold text-xl transition-colors ${
+          className={`py-4 md:py-5 px-5 md:px-6 rounded-2xl font-bold text-xl md:text-2xl transition-colors ${
             immersive
               ? 'bg-purple-100 text-purple-600'
               : 'bg-gray-100 text-gray-400'
@@ -244,7 +244,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         <button
           type="button"
           onClick={onReset}
-          className="py-4 px-5 rounded-2xl bg-gray-100 text-gray-500 font-bold text-xl
+          className="py-4 md:py-5 px-5 md:px-6 rounded-2xl bg-gray-100 text-gray-500 font-bold text-xl md:text-2xl
                      active:bg-gray-200 transition-colors"
           title="Back"
         >
@@ -253,11 +253,11 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
       </div>
 
       {error && (
-        <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3">{error}</p>
+        <p className="text-red-600 text-sm md:text-base text-center bg-red-50 rounded-xl p-3">{error}</p>
       )}
 
       {immersive && momentsLoading && (
-        <p className="text-purple-400 text-xs text-center">✨ Preparing immersive experience…</p>
+        <p className="text-purple-400 text-xs md:text-sm text-center">✨ Preparing immersive experience…</p>
       )}
 
       {/* Immersive moment overlay (fixed-position, non-obstructive) */}
@@ -266,8 +266,8 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
       )}
 
       {/* Reading area — looks like a paragraph in a textbook */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 min-h-40
-                      text-xl leading-relaxed font-serif tracking-wide">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 md:px-8 py-4 md:py-6 min-h-40
+                      text-xl md:text-2xl leading-relaxed md:leading-loose font-serif tracking-wide">
         {words.map((word, i) => (
           <React.Fragment key={i}>
             <WordCard
@@ -284,7 +284,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
       </div>
 
       {/* Tap hint */}
-      <p className="text-gray-400 text-xs text-center">Tap any word to learn it</p>
+      <p className="text-gray-400 text-xs md:text-sm text-center">Tap any word to learn it</p>
 
       {/* Progress bar — subtle, only while reading */}
       {assessedCount > 0 && !sessionDone && (
@@ -300,16 +300,16 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
 
       {/* Score card — shown after session ends */}
       {sessionDone && gamificationScore && !error && (
-        <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 p-5 shadow-sm text-center">
-          <p className="text-5xl mb-2">
+        <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 p-5 md:p-8 shadow-sm text-center">
+          <p className="text-5xl md:text-6xl mb-2">
             {'⭐'.repeat(gamificationScore.stars)}{'☆'.repeat(5 - gamificationScore.stars)}
           </p>
-          <p className="text-4xl font-extrabold text-indigo-700">
-            {gamificationScore.score}<span className="text-lg text-indigo-400"> / 100</span>
+          <p className="text-4xl md:text-5xl font-extrabold text-indigo-700">
+            {gamificationScore.score}<span className="text-lg md:text-xl text-indigo-400"> / 100</span>
           </p>
-          <p className="text-sm font-semibold text-indigo-600 mt-1">{gamificationScore.label}</p>
-          <p className="text-indigo-700 font-medium text-sm mt-2">{gamificationScore.message}</p>
-          <p className="text-gray-400 text-xs mt-2">
+          <p className="text-sm md:text-base font-semibold text-indigo-600 mt-1">{gamificationScore.label}</p>
+          <p className="text-indigo-700 font-medium text-sm md:text-base mt-2">{gamificationScore.message}</p>
+          <p className="text-gray-400 text-xs md:text-sm mt-2">
             {correctCount} of {assessedCount} words correct
             {gamificationScore.hardWordCount > 0 && (
               <> · {gamificationScore.hardWordCorrect} tricky words nailed!</>
