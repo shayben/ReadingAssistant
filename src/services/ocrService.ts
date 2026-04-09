@@ -47,13 +47,29 @@ interface LayoutLine {
 // ---------------------------------------------------------------------------
 
 /**
+ * Convert a base64 data-URL to a Blob without fetch() — avoids Safari's
+ * size limits that cause "Load failed" on large camera images.
+ */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+/**
  * Resize and re-encode an image data-URL so that:
  *  - The longest side is at most MAX_IMAGE_DIMENSION px.
  *  - The blob stays well under the Azure 4 MB limit.
  *  - EXIF orientation is baked in (browsers apply it when drawing to canvas).
  */
 async function prepareImage(dataUrl: string): Promise<Blob> {
-  const img = await createImageBitmap(await (await fetch(dataUrl)).blob());
+  // Convert data URL → Blob manually (fetch(dataUrl) fails on mobile Safari
+  // with large images from phone cameras due to base64 size limits).
+  const sourceBlob = dataUrlToBlob(dataUrl);
+  const img = await createImageBitmap(sourceBlob);
 
   let { width, height } = img;
   const longest = Math.max(width, height);
@@ -63,12 +79,34 @@ async function prepareImage(dataUrl: string): Promise<Blob> {
     height = Math.round(height * scale);
   }
 
-  const canvas = new OffscreenCanvas(width, height);
+  // Use OffscreenCanvas when available, fall back to regular canvas
+  // (OffscreenCanvas.convertToBlob is missing on Safari < 17)
+  if (typeof OffscreenCanvas !== 'undefined') {
+    try {
+      const oc = new OffscreenCanvas(width, height);
+      const ctx = oc.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, width, height);
+      img.close();
+      return await oc.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
+    } catch {
+      // convertToBlob may not exist — fall through to regular canvas
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d')!;
   ctx.drawImage(img, 0, 0, width, height);
   img.close();
 
-  return canvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('Failed to compress image'))),
+      'image/jpeg',
+      JPEG_QUALITY,
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
