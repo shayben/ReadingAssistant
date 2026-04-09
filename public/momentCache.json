@@ -1,7 +1,4 @@
-{ KeyMoment } from '../services/momentsService';
-
-/** Key format: "{grade}-{paragraphIndex}" e.g. "K-0", "3-2", "6-1" */
-export const momentCache: Record<string, KeyMoment[]> = {
+{
   "K-0": [
     {
       "wordIndex": 1,

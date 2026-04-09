@@ -5,6 +5,7 @@
  */
 
 import type { StoryContext } from './storyService';
+import type { StickerRegistryEntry } from './stickerService';
 
 const STORAGE_KEY = 'wizbit:story-library';
 
@@ -23,6 +24,8 @@ export interface SavedStory {
   chapters: SavedChapter[];
   /** Generation context needed to resume the story. */
   storyContext: StoryContext;
+  /** Sticker registry for cross-chapter visual consistency. */
+  stickerRegistry?: StickerRegistryEntry[];
   completed: boolean;
   createdAt: string;
   updatedAt: string;
@@ -74,7 +77,7 @@ export function createStory(story: Omit<SavedStory, 'id' | 'createdAt' | 'update
 }
 
 /** Update an existing story by ID. Only provided fields are merged. */
-export function updateStory(id: string, updates: Partial<Pick<SavedStory, 'chapters' | 'storyContext' | 'completed'>>): void {
+export function updateStory(id: string, updates: Partial<Pick<SavedStory, 'chapters' | 'storyContext' | 'completed' | 'stickerRegistry'>>): void {
   const all = loadAll();
   const idx = all.findIndex((s) => s.id === id);
   if (idx === -1) return;

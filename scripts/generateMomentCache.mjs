@@ -15,14 +15,22 @@ if (!ENDPOINT || !KEY) {
   process.exit(1);
 }
 
-const SYSTEM_PROMPT = `You are a reading assistant for children ages 6-12. Analyse the given text and identify 2-4 key moments where showing a visual image or playing relevant background music would make reading more engaging.
+const SYSTEM_PROMPT = `You are a reading assistant for children ages 6-12. Analyse the given text and identify 4-8 key moments where showing a visual sticker, playing background music, or triggering a contextual sound effect would make reading more immersive and engaging.
+
+Each moment spans a range of words: it appears at the "start" word and fades at the "fade" word. Pick a range that covers the phrase or scene the moment illustrates (typically 3-10 words).
 
 For each moment return a JSON object with:
-- wordIndex: 0-based index of the trigger word in the words array
-- triggerWord: the actual trigger word
+- wordIndex: 0-based index of the START word where the moment appears
+- triggerWord: the actual start word
+- fadeWordIndex: 0-based index of the FADE word where the moment disappears (must be >= wordIndex)
+- fadeWord: the actual fade word
 - type: "image", "music", or "both"
-- imageQuery: a Wikipedia article title for finding an image (use underscores for spaces, e.g. "Napoleon", "Amazon_rainforest"). Only if type includes image.
+- imageQuery: a Wikipedia article title for finding a reference image (use underscores for spaces, e.g. "Napoleon", "Amazon_rainforest"). Only if type includes image.
+- stickerPrompt: a short phrase describing a cute cartoon sticker to show (e.g. "a happy orange cat sitting", "bright yellow sun with sunglasses", "a rocket blasting off"). Keep it simple, child-friendly, and visual. Only if type includes image.
+- stickerEmoji: a single emoji that best represents this moment (always include this)
+- stickerLabel: a short consistent name for the character, place, or object this sticker depicts (e.g. "brave knight", "enchanted forest", "golden crown"). Use the SAME label when the same entity appears again.
 - musicCategory: one of "nature", "dramatic", "celebration", "peaceful", "mysterious", "adventure", "ocean", "space". Only if type includes music.
+- soundEffect: (optional) a short sound effect that matches what is happening in the text at this word. Pick from: "falling", "splash", "honk", "thunder", "wind", "rain", "bark", "roar", "bell", "whistle", "bird", "whoosh", "knock", "pop", "buzz", "boom", "gallop", "wave", "cheer", "fire", "ding", "creak", "snap", "engine", "scream". Only include when the text clearly describes an action or scene that has a recognisable sound.
 - caption: a fun, kid-friendly one-sentence fact (max 15 words)
 
 Return ONLY a valid JSON array. No markdown fences, no explanation.`;
@@ -117,6 +125,10 @@ async function main() {
 
   fs.writeFileSync('src/data/momentCache.ts', lines.join('\n'), 'utf-8');
   console.log('\nWritten to src/data/momentCache.ts');
+
+  // Also write pure JSON for runtime lazy-loading
+  fs.writeFileSync('public/momentCache.json', JSON.stringify(cache, null, 2), 'utf-8');
+  console.log('Written to public/momentCache.json');
 }
 
 main().catch(console.error);

@@ -14,13 +14,14 @@ import {
   type EarnedTrophy,
 } from '../services/progressService';
 import { ALL_TROPHIES } from '../services/trophyService';
+import { loadCollectedStickers, type CollectedSticker } from '../services/stickerAlbumService';
 
 interface ProgressDashboardProps {
   user: CurrentUser;
   onClose: () => void;
 }
 
-type Tab = 'history' | 'practice' | 'trophies' | 'analytics';
+type Tab = 'history' | 'practice' | 'trophies' | 'stickers' | 'analytics';
 
 /** Simple skeleton placeholder bar. */
 const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
@@ -82,6 +83,7 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [practiceWords, setPracticeWords] = useState<PracticeWord[]>([]);
   const [earnedTrophies, setEarnedTrophies] = useState<EarnedTrophy[]>([]);
+  const [collectedStickers, setCollectedStickers] = useState<CollectedSticker[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -97,6 +99,7 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
       setSessions(s);
       setPracticeWords(p);
       setEarnedTrophies(t);
+      setCollectedStickers(loadCollectedStickers());
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load progress data');
     } finally {
@@ -149,6 +152,10 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
           <p className="text-xs md:text-sm text-gray-400">Trophies</p>
         </div>
         <div className="flex-shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 text-center min-w-[80px]">
+          <p className="text-2xl md:text-3xl font-extrabold text-pink-500">{collectedStickers.length}</p>
+          <p className="text-xs md:text-sm text-gray-400">Stickers</p>
+        </div>
+        <div className="flex-shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 text-center min-w-[80px]">
           <p className="text-2xl md:text-3xl font-extrabold text-red-500">{practiceWords.length}</p>
           <p className="text-xs md:text-sm text-gray-400">Practice</p>
         </div>
@@ -164,21 +171,29 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
 
       {/* Tabs */}
       <div className="flex gap-1 px-4 md:px-6 max-w-lg md:max-w-2xl mx-auto w-full">
-        {(['history', 'practice', 'trophies', 'analytics'] as Tab[]).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`flex-1 py-2 md:py-3 rounded-xl text-sm md:text-base font-semibold transition-colors capitalize ${
-              tab === t
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-white text-gray-500 border border-gray-100'
-            }`}
-          >
-            {t === 'history' ? '📅' : t === 'practice' ? '🔁' : t === 'trophies' ? '🏆' : '📊'}{' '}
-            <span className="hidden sm:inline">{t === 'history' ? 'History' : t === 'practice' ? 'Practice' : t === 'trophies' ? 'Trophies' : 'Stats'}</span>
-          </button>
-        ))}
+        {(['history', 'practice', 'trophies', 'stickers', 'analytics'] as Tab[]).map((t) => {
+          const icons: Record<Tab, string> = {
+            history: '📅', practice: '🔁', trophies: '🏆', stickers: '🖼️', analytics: '📊',
+          };
+          const labels: Record<Tab, string> = {
+            history: 'History', practice: 'Practice', trophies: 'Trophies', stickers: 'Stickers', analytics: 'Stats',
+          };
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2 md:py-3 rounded-xl text-xs md:text-sm font-semibold transition-colors ${
+                tab === t
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white text-gray-500 border border-gray-100'
+              }`}
+            >
+              {icons[t]}{' '}
+              <span className="hidden sm:inline">{labels[t]}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Content */}
@@ -350,6 +365,52 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
                 </div>
               );
             })()}
+
+            {/* ── Stickers tab ── */}
+            {tab === 'stickers' && (
+              collectedStickers.length === 0 ? (
+                <p className="text-center text-gray-400 text-sm md:text-base py-10">
+                  Read stories to collect stickers! 🖼️
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-center text-sm text-gray-400">
+                    {collectedStickers.length} sticker{collectedStickers.length !== 1 ? 's' : ''} collected
+                  </p>
+                  <div className="grid grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
+                    {collectedStickers.map((sticker) => (
+                      <div
+                        key={sticker.id}
+                        className="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl border border-pink-100 shadow-sm p-3 md:p-4 text-center"
+                      >
+                        {sticker.stickerUrl ? (
+                          <img
+                            src={sticker.stickerUrl}
+                            alt={sticker.label}
+                            className="w-14 h-14 md:w-20 md:h-20 mx-auto object-contain drop-shadow-md"
+                          />
+                        ) : (
+                          <span className="block text-4xl md:text-5xl drop-shadow-md">
+                            {sticker.stickerEmoji ?? '🖼️'}
+                          </span>
+                        )}
+                        <p className="text-xs md:text-sm font-bold text-purple-700 mt-2 capitalize leading-snug">
+                          {sticker.label}
+                        </p>
+                        <p className="text-[10px] md:text-xs text-gray-400 mt-0.5 leading-snug line-clamp-2">
+                          {sticker.caption}
+                        </p>
+                        {sticker.storyTitle && (
+                          <p className="text-[9px] md:text-[10px] text-pink-400 mt-1">
+                            📖 {sticker.storyTitle}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            )}
 
             {/* ── Analytics tab ── */}
             {tab === 'analytics' && (() => {

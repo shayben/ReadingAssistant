@@ -34,6 +34,7 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
 
   const nextWordRef = useRef(0);
   const stopRef = useRef<(() => void) | null>(null);
+  const pausingRef = useRef(false);
 
   const handleWordResult = useCallback((result: WordResult) => {
     const idx = nextWordRef.current;
@@ -64,6 +65,12 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
   }, [words.length]);
 
   const handleDone = useCallback((result: AssessmentResult) => {
+    // When pausing, the speech session ends but we don't want to finalize
+    if (pausingRef.current) {
+      pausingRef.current = false;
+      if (result.fluencyScore > 0) setFluencyScore(result.fluencyScore);
+      return;
+    }
     setFluencyScore(result.fluencyScore > 0 ? result.fluencyScore : undefined);
     setListening(false);
     setSessionDone(true);
@@ -101,6 +108,7 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
   }, [wordGroups, handleWordResult, handleDone, handleError]);
 
   const pauseListening = useCallback(() => {
+    pausingRef.current = true;
     stopRef.current?.();
     stopRef.current = null;
     setPaused(true);

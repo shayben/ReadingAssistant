@@ -2,10 +2,11 @@
  * Story Library — browse saved stories, re-read chapters, or continue in-progress adventures.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { getStories, deleteStory } from '../services/storyLibraryService';
 import type { SavedStory } from '../services/storyLibraryService';
 import ReadingSession from './ReadingSession';
+import { deserializeRegistry } from '../services/stickerService';
 
 interface StoryLibraryProps {
   onClose: () => void;
@@ -25,6 +26,18 @@ const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose, onContinue }) => {
     reload();
   }, [reload]);
 
+  // Restore sticker registry from the selected story for visual consistency
+  const readingStoryRegistry = useMemo(
+    () => readingChapter?.story.stickerRegistry
+      ? deserializeRegistry(readingChapter.story.stickerRegistry)
+      : undefined,
+    [readingChapter],
+  );
+  const readingStoryLabels = useMemo(
+    () => readingStoryRegistry ? Array.from(readingStoryRegistry.keys()) : undefined,
+    [readingStoryRegistry],
+  );
+
   // ── Reading a chapter ──
   if (readingChapter) {
     const { story, chapterIdx } = readingChapter;
@@ -41,7 +54,13 @@ const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose, onContinue }) => {
         </div>
 
         <main className="pb-24 pt-0">
-          <ReadingSession text={chapter.text} onReset={() => setReadingChapter(null)} />
+          <ReadingSession
+            text={chapter.text}
+            stickerRegistry={readingStoryRegistry}
+            knownStickerLabels={readingStoryLabels}
+            storyTitle={chapter.title}
+            onReset={() => setReadingChapter(null)}
+          />
         </main>
 
         {/* Navigation buttons */}

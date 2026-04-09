@@ -20,12 +20,22 @@ import {
 import { computeNewTrophies, getTrophy } from '../services/trophyService';
 import type { Trophy } from '../services/trophyService';
 import { getStoryStats } from '../services/storyLibraryService';
+import { startAmbient, stopAmbient } from '../services/audioService';
+import { collectSticker } from '../services/stickerAlbumService';
+import type { StickerRegistry } from '../services/stickerService';
+import type { PreloadedMoment } from '../services/mediaService';
 
 export type { WordTiming } from '../hooks/useAssessment';
 
 interface ReadingSessionProps {
   text: string;
   momentCacheKey?: string;
+  /** Story sticker registry for cross-chapter visual consistency. */
+  stickerRegistry?: StickerRegistry;
+  /** Known sticker labels from previous chapters (for AI context). */
+  knownStickerLabels?: string[];
+  /** Story title for sticker collection metadata. */
+  storyTitle?: string;
   onReset: () => void;
 }
 
@@ -73,7 +83,9 @@ function tokenise(text: string): string[] {
   return text.match(/\S+/g) ?? [];
 }
 
-const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, onReset }) => {
+const ReadingSession: React.FC<ReadingSessionProps> = ({
+  text, momentCacheKey, stickerRegistry, knownStickerLabels, storyTitle, onReset,
+}) => {
   const { user } = useAuth();
   const words = useMemo(() => tokenise(text), [text]);
   const wordGroups = useMemo(() => segmentBySentence(words), [words]);
@@ -113,11 +125,36 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
   const [newTrophies, setNewTrophies] = useState<Trophy[]>([]);
 
   // Immersive moments
-  const { moments, momentIndices, loading: momentsLoading } = useMoments({
+  const { moments, momentIndices, storyTheme, loading: momentsLoading } = useMoments({
     words,
     momentCacheKey,
     enabled: immersive,
+    stickerRegistry,
+    knownStickerLabels,
   });
+
+  // Collect stickers for the album as they trigger
+  const handleStickerCollected = useCallback((moment: PreloadedMoment) => {
+    if (!moment.stickerLabel) return;
+    collectSticker({
+      label: moment.stickerLabel,
+      stickerUrl: moment.stickerUrl,
+      stickerEmoji: moment.stickerEmoji,
+      stickerSource: moment.stickerSource,
+      caption: moment.caption,
+      storyTitle,
+    });
+  }, [storyTitle]);
+
+  // Manage ambient soundscape lifecycle
+  useEffect(() => {
+    if (immersive && listening && storyTheme) {
+      startAmbient(storyTheme);
+    } else {
+      stopAmbient();
+    }
+    return () => { stopAmbient(); };
+  }, [immersive, listening, storyTheme]);
 
   // Cleanup recording on unmount
   useEffect(() => cleanupRecording, [cleanupRecording]);
@@ -223,7 +260,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
   const selectedWord = selectedWordIndex !== null ? words[selectedWordIndex] : null;
   const selectedTiming = selectedWordIndex !== null ? wordTimings[selectedWordIndex] : undefined;
   const selectedMoment = selectedWordIndex !== null
-    ? moments.find((m) => m.wordIndex === selectedWordIndex)
+    ? moments.find((m) => selectedWordIndex >= m.wordIndex && selectedWordIndex <= m.fadeWordIndex)
     : undefined;
 
   return (
@@ -341,28 +378,35 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
         </p>
       )}
 
-      {/* Immersive moment overlay (fixed-position, non-obstructive) */}
-      {immersive && moments.length > 0 && (
-        <MomentOverlay moments={moments} currentWordIndex={nextWordIndex} />
-      )}
+      {/* Reading area with sticker overlay container */}
+      <div className="relative overflow-visible">
+        {/* Reading text block */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 md:px-8 py-4 md:py-6 min-h-40
+                        text-xl md:text-2xl leading-relaxed md:leading-loose font-serif tracking-wide">
+          {words.map((word, i) => (
+            <React.Fragment key={i}>
+              <WordCard
+                word={word}
+                index={i}
+                status={statuses[i] ?? 'pending'}
+                isNext={listening && i === nextWordIndex}
+                hasMoment={momentIndices.has(i)}
+                score={scores[i]}
+                onClick={handleWordClick}
+              />
+              {' '}
+            </React.Fragment>
+          ))}
+        </div>
 
-      {/* Reading area — looks like a paragraph in a textbook */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 md:px-8 py-4 md:py-6 min-h-40
-                      text-xl md:text-2xl leading-relaxed md:leading-loose font-serif tracking-wide">
-        {words.map((word, i) => (
-          <React.Fragment key={i}>
-            <WordCard
-              word={word}
-              index={i}
-              status={statuses[i] ?? 'pending'}
-              isNext={listening && i === nextWordIndex}
-              hasMoment={momentIndices.has(i)}
-              score={scores[i]}
-              onClick={handleWordClick}
-            />
-            {' '}
-          </React.Fragment>
-        ))}
+        {/* Animated sticker overlays — positioned in margins around the text */}
+        {immersive && moments.length > 0 && (
+          <MomentOverlay
+            moments={moments}
+            currentWordIndex={nextWordIndex}
+            onStickerCollected={handleStickerCollected}
+          />
+        )}
       </div>
 
       {/* Tap hint */}

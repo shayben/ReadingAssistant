@@ -1,75 +1,126 @@
 /**
- * Fetches and preloads media (images + audio) for key moments.
+ * Fetches and preloads media (stickers + audio) for key moments.
  *
- * Images come from the Wikipedia REST API (page summary thumbnails).
- * Audio uses a curated category→URL map of public-domain clips.
+ * Sticker images come from the hybrid stickerService (bundled → AI → Wikipedia → emoji).
+ * Ambient audio and sound effects are synthesized via audioService (Web Audio API).
  */
 
 import type { KeyMoment } from './momentsService';
+import type { AmbientCategory } from './audioService';
+import { fetchSticker, type StickerSource, type StickerRegistry } from './stickerService';
+
+/** Entrance animation types for sticker display. */
+export type StickerAnimation = 'pop' | 'slide-left' | 'slide-right' | 'float-up';
+
+const ANIMATIONS: StickerAnimation[] = ['pop', 'slide-left', 'slide-right', 'float-up'];
 
 export interface PreloadedMoment {
   wordIndex: number;
   triggerWord: string;
+  /** Word index where this moment should fade out. Defaults to wordIndex. */
+  fadeWordIndex: number;
   caption: string;
-  imageUrl?: string;
-  audioUrl?: string;
+  /** Consistent label for this sticker entity (for reuse and collection). */
+  stickerLabel?: string;
+  /** Sticker image URL (transparent PNG, Wikipedia thumbnail, or data URI). */
+  stickerUrl?: string;
+  /** Emoji fallback when no sticker image is available. */
+  stickerEmoji?: string;
+  /** How the sticker was resolved. */
+  stickerSource: StickerSource;
+  /** Entrance animation for this sticker. */
+  animation: StickerAnimation;
+  /** Ambient music category for this moment. */
+  musicCategory?: string;
+  /** Contextual sound effect to play at this moment. */
+  soundEffect?: string;
 }
 
-/** Category → public-domain audio URL (Wikimedia Commons, CC0/PD). */
-const AMBIENT_AUDIO: Record<string, string> = {
-  // Add curated URLs here as needed — audio playback is best-effort.
-};
-
-async function fetchWikipediaImage(query: string): Promise<string | undefined> {
-  try {
-    const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`;
-    const res = await fetch(url);
-    if (!res.ok) return undefined;
-    const data = await res.json();
-    return data?.thumbnail?.source ?? data?.originalimage?.source;
-  } catch {
-    return undefined;
-  }
+/** Derive the overall story theme from the moments' music categories. */
+export function deriveStoryTheme(moments: KeyMoment[]): AmbientCategory | null {
+  const cats = moments
+    .map((m) => m.musicCategory)
+    .filter((c): c is string => !!c);
+  if (cats.length === 0) return null;
+  // Most frequent category wins
+  const freq: Record<string, number> = {};
+  for (const c of cats) freq[c] = (freq[c] ?? 0) + 1;
+  return Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0] as AmbientCategory;
 }
 
 /**
  * Preload all media for an array of key moments.
- * Returns only moments that have at least one usable asset.
+ * When a stickerRegistry is provided, known labels are reused for visual
+ * consistency across chapters; newly resolved stickers are added to it.
  */
-export async function preloadMoments(moments: KeyMoment[]): Promise<PreloadedMoment[]> {
+export async function preloadMoments(
+  moments: KeyMoment[],
+  stickerRegistry?: StickerRegistry,
+): Promise<PreloadedMoment[]> {
   const results = await Promise.all(
-    moments.map(async (m): Promise<PreloadedMoment> => {
+    moments.map(async (m, index): Promise<PreloadedMoment> => {
       const out: PreloadedMoment = {
         wordIndex: m.wordIndex,
         triggerWord: m.triggerWord,
+        fadeWordIndex: m.fadeWordIndex ?? m.wordIndex,
         caption: m.caption,
+        stickerLabel: m.stickerLabel,
+        stickerSource: 'emoji',
+        animation: ANIMATIONS[index % ANIMATIONS.length],
       };
 
-      // Image
-      if ((m.type === 'image' || m.type === 'both') && m.imageQuery) {
-        out.imageUrl = await fetchWikipediaImage(m.imageQuery);
-        if (out.imageUrl) {
-          const img = new Image();
-          img.src = out.imageUrl; // warm the browser cache
+      // Resolve sticker — check registry first for cross-chapter reuse
+      if (m.type === 'image' || m.type === 'both') {
+        const registryKey = m.stickerLabel?.toLowerCase().trim();
+        const registryHit = registryKey ? stickerRegistry?.get(registryKey) : undefined;
+
+        if (registryHit) {
+          out.stickerSource = registryHit.source;
+          if (registryHit.url) {
+            out.stickerUrl = registryHit.url;
+            const img = new Image();
+            img.src = registryHit.url;
+          } else if (registryHit.emoji) {
+            out.stickerEmoji = registryHit.emoji;
+          }
+        } else {
+          const sticker = await fetchSticker(m.imageQuery, m.stickerPrompt, m.stickerEmoji);
+          out.stickerSource = sticker.source;
+          if (sticker.url) {
+            out.stickerUrl = sticker.url;
+            const img = new Image();
+            img.src = sticker.url;
+          } else if (sticker.emoji) {
+            out.stickerEmoji = sticker.emoji;
+          }
+          // Store in registry for future chapter reuse
+          if (registryKey && stickerRegistry) {
+            stickerRegistry.set(registryKey, {
+              label: m.stickerLabel!,
+              url: sticker.url,
+              emoji: sticker.emoji,
+              source: sticker.source,
+              stickerPrompt: m.stickerPrompt,
+            });
+          }
         }
+      } else if (m.stickerEmoji) {
+        out.stickerEmoji = m.stickerEmoji;
       }
 
-      // Audio
+      // Ambient music category (used by audioService at runtime)
       if ((m.type === 'music' || m.type === 'both') && m.musicCategory) {
-        const audioSrc = AMBIENT_AUDIO[m.musicCategory];
-        if (audioSrc) {
-          out.audioUrl = audioSrc;
-          try {
-            const audio = new Audio();
-            audio.preload = 'auto';
-            audio.src = audioSrc;
-          } catch { /* best-effort */ }
-        }
+        out.musicCategory = m.musicCategory;
+      }
+
+      // Contextual sound effect
+      if (m.soundEffect) {
+        out.soundEffect = m.soundEffect;
       }
 
       return out;
     }),
   );
 
-  return results.filter((m) => m.imageUrl || m.audioUrl);
+  return results.filter((m) => m.stickerUrl || m.stickerEmoji || m.musicCategory || m.soundEffect);
 }

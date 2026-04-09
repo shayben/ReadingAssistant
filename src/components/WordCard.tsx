@@ -34,7 +34,7 @@ const WordCard: React.FC<WordCardProps> = ({ word, index, status, isNext, hasMom
       className={`
         cursor-pointer select-none transition-colors duration-200
         hover:bg-indigo-50 hover:rounded px-0.5
-        border-none bg-transparent font-inherit text-inherit p-0
+        border-none font-inherit p-0
         ${isNext ? 'animate-next-word rounded px-1 font-semibold underline decoration-2 decoration-indigo-400' : ''}
         ${hasMoment ? 'border-b-2 border-dashed border-purple-300' : ''}
         ${statusClasses[status]}

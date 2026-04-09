@@ -6,6 +6,11 @@ import { generateChapter } from '../services/storyService';
 import type { StoryContext, ChapterResult } from '../services/storyService';
 import { createStory, updateStory } from '../services/storyLibraryService';
 import type { SavedStory } from '../services/storyLibraryService';
+import {
+  serializeRegistry,
+  deserializeRegistry,
+  type StickerRegistry,
+} from '../services/stickerService';
 
 type AdventureStep = 'prompt' | 'generating' | 'reading' | 'choosing' | 'ending';
 
@@ -39,6 +44,21 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
   const chaptersDetailRef = React.useRef<ChapterResult[]>([]);
   const resumeFiredRef = React.useRef(false);
 
+  // Sticker registry for cross-chapter visual consistency
+  const stickerRegistryRef = React.useRef<StickerRegistry>(
+    resumeStory?.stickerRegistry
+      ? deserializeRegistry(resumeStory.stickerRegistry)
+      : new Map(),
+  );
+
+  /** Labels known from previous chapters (passed as AI context). */
+  const knownStickerLabels = React.useMemo(
+    () => Array.from(stickerRegistryRef.current.keys()),
+    // Refresh whenever a new chapter is generated (chapters count changes)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [storyContext.chapters.length],
+  );
+
   /** Persist the current state to the library (create or update). */
   const persistToLibrary = useCallback((
     ctx: StoryContext,
@@ -53,7 +73,12 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
     }));
 
     if (savedStoryIdRef.current) {
-      updateStory(savedStoryIdRef.current, { chapters, storyContext: ctx, completed });
+      updateStory(savedStoryIdRef.current, {
+        chapters,
+        storyContext: ctx,
+        completed,
+        stickerRegistry: serializeRegistry(stickerRegistryRef.current),
+      });
     } else {
       const saved = createStory({
         prompt: ctx.prompt,
@@ -61,6 +86,7 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
         levelEmoji,
         chapters,
         storyContext: ctx,
+        stickerRegistry: serializeRegistry(stickerRegistryRef.current),
         completed,
       });
       savedStoryIdRef.current = saved.id;
@@ -100,7 +126,7 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
     if (!resumeStory || resumeFiredRef.current) return;
     resumeFiredRef.current = true;
     const lastChoice = storyContext.chapters[storyContext.chapters.length - 1]?.choiceMade;
-    generate(storyContext, lastChoice); // eslint-disable-line react-hooks/set-state-in-effect -- intentional one-time resume trigger
+    generate(storyContext, lastChoice);
   });
 
   const handleStartStory = useCallback((prompt: string) => {
@@ -108,6 +134,7 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
     setStoryContext(ctx);
     chaptersDetailRef.current = [];
     savedStoryIdRef.current = null;
+    stickerRegistryRef.current = new Map();
     generate(ctx);
   }, [readingLevel, generate]);
 
@@ -180,7 +207,13 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
         </div>
 
         <main className="pb-24 pt-0">
-          <ReadingSession text={currentChapter.text} onReset={onReset} />
+          <ReadingSession
+            text={currentChapter.text}
+            stickerRegistry={stickerRegistryRef.current}
+            knownStickerLabels={knownStickerLabels}
+            storyTitle={currentChapter.title}
+            onReset={onReset}
+          />
         </main>
 
         {!doneReading && (
@@ -224,7 +257,13 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
         </div>
 
         <main className="pb-8 pt-0">
-          <ReadingSession text={currentChapter.text} onReset={onReset} />
+          <ReadingSession
+            text={currentChapter.text}
+            stickerRegistry={stickerRegistryRef.current}
+            knownStickerLabels={knownStickerLabels}
+            storyTitle={currentChapter.title}
+            onReset={onReset}
+          />
         </main>
 
         <div className="max-w-lg md:max-w-2xl mx-auto px-4 pb-8">
@@ -248,6 +287,7 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
                   setCurrentChapter(null);
                   chaptersDetailRef.current = [];
                   savedStoryIdRef.current = null;
+                  stickerRegistryRef.current = new Map();
                   setStep('prompt');
                 }}
                 className="flex-1 py-3 md:py-4 rounded-2xl bg-purple-600 text-white font-bold text-lg md:text-xl

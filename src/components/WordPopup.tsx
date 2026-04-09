@@ -128,29 +128,34 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translatio
       {moment && (
         <div className="mb-3 md:mb-4 rounded-xl bg-purple-50 border border-purple-100 p-3 md:p-4">
           <div className="flex items-start gap-3">
-            {moment.imageUrl && (
+            {moment.stickerUrl ? (
               <img
-                src={moment.imageUrl}
+                src={moment.stickerUrl}
                 alt={moment.caption}
-                className="w-20 h-20 md:w-24 md:h-24 rounded-xl object-cover shrink-0 shadow-sm"
+                className={`w-20 h-20 md:w-24 md:h-24 object-contain shrink-0
+                  ${moment.stickerSource === 'wikipedia' ? 'rounded-xl shadow-sm' : 'drop-shadow-[0_2px_4px_rgba(0,0,0,0.12)]'}`}
               />
-            )}
+            ) : moment.stickerEmoji ? (
+              <span className="text-5xl md:text-6xl shrink-0 select-none" aria-hidden="true">
+                {moment.stickerEmoji}
+              </span>
+            ) : null}
             <div className="flex-1 min-w-0">
               <p className="text-sm md:text-base text-purple-700 font-medium leading-snug">
                 💡 {moment.caption}
               </p>
-              {moment.audioUrl && (
+              {moment.soundEffect && (
                 <button
                   type="button"
                   onClick={() => {
-                    const a = new Audio(moment.audioUrl);
-                    a.volume = 0.3;
-                    a.play().catch(() => {});
+                    import('../services/audioService').then(({ playSoundEffect }) => {
+                      playSoundEffect(moment.soundEffect!);
+                    });
                   }}
                   className="mt-2 text-xs md:text-sm font-bold text-purple-600 bg-purple-100 rounded-lg
                              px-3 py-1.5 active:bg-purple-200 transition-colors"
                 >
-                  🎵 Play sound
+                  🔊 Play sound
                 </button>
               )}
             </div>
