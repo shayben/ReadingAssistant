@@ -1,5 +1,5 @@
 /**
- * Story Library — browse and re-read previously completed adventure stories.
+ * Story Library — browse saved stories, re-read chapters, or continue in-progress adventures.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -9,9 +9,11 @@ import ReadingSession from './ReadingSession';
 
 interface StoryLibraryProps {
   onClose: () => void;
+  /** Called when the user wants to continue an in-progress story. */
+  onContinue?: (story: SavedStory) => void;
 }
 
-const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose }) => {
+const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose, onContinue }) => {
   const [stories, setStories] = useState<SavedStory[]>(() => getStories());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [readingChapter, setReadingChapter] = useState<{ story: SavedStory; chapterIdx: number } | null>(null);
@@ -93,17 +95,20 @@ const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose }) => {
         <h2 className="text-2xl md:text-3xl font-bold text-purple-700 mb-1">📚 My Stories</h2>
         <p className="text-gray-400 text-sm md:text-base mb-5">
           {stories.length === 0
-            ? 'No saved stories yet. Complete an adventure to save it here!'
+            ? 'No saved stories yet. Start an adventure to see it here!'
             : `${stories.length} ${stories.length === 1 ? 'story' : 'stories'} saved`}
         </p>
 
         <div className="flex flex-col gap-4">
           {stories.map((story) => {
             const isExpanded = expandedId === story.id;
+            const isInProgress = !story.completed;
             return (
               <div
                 key={story.id}
-                className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+                className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${
+                  isInProgress ? 'border-amber-200' : 'border-gray-100'
+                }`}
               >
                 {/* Story header — tap to expand */}
                 <button
@@ -113,11 +118,18 @@ const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose }) => {
                 >
                   <span className="text-3xl md:text-4xl">{story.levelEmoji}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-800 text-base md:text-lg truncate">
-                      {story.prompt}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-800 text-base md:text-lg truncate">
+                        {story.prompt}
+                      </p>
+                      {isInProgress && (
+                        <span className="shrink-0 text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                          In Progress
+                        </span>
+                      )}
+                    </div>
                     <p className="text-gray-400 text-xs md:text-sm mt-0.5">
-                      {story.chapters.length} {story.chapters.length === 1 ? 'chapter' : 'chapters'} · Grade {story.readingLevel} · {formatDate(story.createdAt)}
+                      {story.chapters.length} {story.chapters.length === 1 ? 'chapter' : 'chapters'} · Grade {story.readingLevel} · {formatDate(story.updatedAt ?? story.createdAt)}
                     </p>
                   </div>
                   <span className="text-gray-300 text-xl mt-1">{isExpanded ? '▾' : '▸'}</span>
@@ -145,16 +157,27 @@ const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose }) => {
                       ))}
                     </div>
 
-                    {/* Read all + delete */}
+                    {/* Action buttons */}
                     <div className="flex gap-2 mt-3">
-                      <button
-                        type="button"
-                        onClick={() => setReadingChapter({ story, chapterIdx: 0 })}
-                        className="flex-1 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-sm md:text-base
-                                   active:bg-purple-700 transition-colors"
-                      >
-                        📖 Read from Start
-                      </button>
+                      {isInProgress && onContinue ? (
+                        <button
+                          type="button"
+                          onClick={() => onContinue(story)}
+                          className="flex-1 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm md:text-base
+                                     active:bg-amber-600 transition-colors shadow-sm"
+                        >
+                          ▶️ Continue Adventure
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setReadingChapter({ story, chapterIdx: 0 })}
+                          className="flex-1 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-sm md:text-base
+                                     active:bg-purple-700 transition-colors"
+                        >
+                          📖 Read from Start
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleDelete(story.id)}

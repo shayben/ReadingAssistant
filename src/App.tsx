@@ -8,6 +8,7 @@ import StoryLibrary from './components/StoryLibrary';
 import { recognizeText } from './services/ocrService';
 import { readingLevels } from './data/demoParagraphs';
 import type { ReadingLevel, DemoParagraph } from './data/demoParagraphs';
+import type { SavedStory } from './services/storyLibraryService';
 import { useAuth } from './contexts/AuthContext';
 import { useAppStep } from './hooks/useAppStep';
 
@@ -18,6 +19,7 @@ export default function App() {
   const [momentCacheKey, setMomentCacheKey] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [demoLevel, setDemoLevel] = useState<ReadingLevel | null>(null);
+  const [resumeStory, setResumeStory] = useState<SavedStory | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -95,6 +97,7 @@ export default function App() {
     setMomentCacheKey(undefined);
     setError(null);
     setDemoLevel(null);
+    setResumeStory(null);
     goHome();
   }, [stopCamera, goHome]);
 
@@ -135,7 +138,20 @@ export default function App() {
 
   // ── Story Library ──
   if (step === 'my-stories') {
-    return <StoryLibrary onClose={goHome} />;
+    return (
+      <StoryLibrary
+        onClose={goHome}
+        onContinue={(story) => {
+          // Find matching reading level to set demoLevel for AdventureMode
+          const level = readingLevels.find((l) => l.grade === story.readingLevel);
+          if (level) {
+            setDemoLevel(level);
+            setResumeStory(story);
+            navigate('adventure');
+          }
+        }}
+      />
+    );
   }
 
   // ── Home: camera button + demo levels ──
@@ -277,6 +293,7 @@ export default function App() {
         readingLevel={demoLevel.grade}
         levelEmoji={demoLevel.emoji}
         levelLabel={demoLevel.label}
+        resumeStory={resumeStory ?? undefined}
         onReset={handleReset}
       />
     );

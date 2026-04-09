@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import StoryPromptScreen from './StoryPromptScreen';
 import ChapterChoices from './ChapterChoices';
 import ReadingSession from './ReadingSession';
 import { generateChapter } from '../services/storyService';
 import type { StoryContext, ChapterResult } from '../services/storyService';
-import { saveStory } from '../services/storyLibraryService';
+import { createStory, updateStory } from '../services/storyLibraryService';
+import type { SavedStory } from '../services/storyLibraryService';
 
 type AdventureStep = 'prompt' | 'generating' | 'reading' | 'choosing' | 'ending';
 
@@ -12,6 +13,8 @@ interface AdventureModeProps {
   readingLevel: string;
   levelEmoji: string;
   levelLabel: string;
+  /** When provided, resume this in-progress story instead of showing the prompt screen. */
+  resumeStory?: SavedStory;
   onReset: () => void;
 }
 
@@ -19,21 +22,50 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
   readingLevel,
   levelEmoji,
   levelLabel,
+  resumeStory,
   onReset,
 }) => {
-  const [step, setStep] = useState<AdventureStep>('prompt');
-  const [storyContext, setStoryContext] = useState<StoryContext>({
-    prompt: '',
-    readingLevel,
-    chapters: [],
-  });
+  // If resuming, go straight to generating the next chapter
+  const [step, setStep] = useState<AdventureStep>(resumeStory ? 'generating' : 'prompt');
+  const [storyContext, setStoryContext] = useState<StoryContext>(
+    resumeStory?.storyContext ?? { prompt: '', readingLevel, chapters: [] },
+  );
   const [currentChapter, setCurrentChapter] = useState<ChapterResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [doneReading, setDoneReading] = useState(false);
-  const [storySaved, setStorySaved] = useState(false);
 
-  // Keep full chapter details for saving to library
+  // Track the library entry ID so we can update it incrementally
+  const savedStoryIdRef = React.useRef<string | null>(resumeStory?.id ?? null);
   const chaptersDetailRef = React.useRef<ChapterResult[]>([]);
+  const resumeFiredRef = React.useRef(false);
+
+  /** Persist the current state to the library (create or update). */
+  const persistToLibrary = useCallback((
+    ctx: StoryContext,
+    details: ChapterResult[],
+    completed: boolean,
+  ) => {
+    const chapters = details.map((ch, i) => ({
+      number: ch.chapterNumber,
+      title: ch.title,
+      text: ch.text,
+      choiceMade: ctx.chapters[i]?.choiceMade ?? (completed ? '(ending)' : ''),
+    }));
+
+    if (savedStoryIdRef.current) {
+      updateStory(savedStoryIdRef.current, { chapters, storyContext: ctx, completed });
+    } else {
+      const saved = createStory({
+        prompt: ctx.prompt,
+        readingLevel,
+        levelEmoji,
+        chapters,
+        storyContext: ctx,
+        completed,
+      });
+      savedStoryIdRef.current = saved.id;
+    }
+  }, [readingLevel, levelEmoji]);
 
   const generate = useCallback(async (ctx: StoryContext, choice?: string) => {
     setStep('generating');
@@ -43,37 +75,39 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
       const chapter = await generateChapter(ctx, choice);
       setCurrentChapter(chapter);
       chaptersDetailRef.current = [...chaptersDetailRef.current, chapter];
+
       if (chapter.isEnding) {
-        setStoryContext((prev) => ({
-          ...prev,
-          chapters: [...prev.chapters, { summary: chapter.summary, choiceMade: '(ending)' }],
-        }));
-        // Auto-save completed story to library
-        saveStory({
-          prompt: ctx.prompt,
-          readingLevel,
-          levelEmoji,
-          chapters: [...chaptersDetailRef.current].map((ch, i) => ({
-            number: ch.chapterNumber,
-            title: ch.title,
-            text: ch.text,
-            choiceMade: ctx.chapters[i]?.choiceMade ?? '(ending)',
-          })),
-        });
-        setStorySaved(true);
+        const finalCtx: StoryContext = {
+          ...ctx,
+          chapters: [...ctx.chapters, { summary: chapter.summary, choiceMade: '(ending)' }],
+        };
+        setStoryContext(finalCtx);
+        persistToLibrary(finalCtx, [...chaptersDetailRef.current], true);
         setStep('ending');
       } else {
+        // Save in-progress after each chapter
+        persistToLibrary(ctx, [...chaptersDetailRef.current], false);
         setStep('reading');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate chapter');
-      setStep('prompt');
+      setStep(storyContext.chapters.length > 0 ? 'choosing' : 'prompt');
     }
-  }, [readingLevel, levelEmoji]);
+  }, [persistToLibrary, storyContext.chapters.length]);
+
+  // Resume a saved story — generate the next chapter on mount
+  useEffect(() => {
+    if (!resumeStory || resumeFiredRef.current) return;
+    resumeFiredRef.current = true;
+    const lastChoice = storyContext.chapters[storyContext.chapters.length - 1]?.choiceMade;
+    generate(storyContext, lastChoice); // eslint-disable-line react-hooks/set-state-in-effect -- intentional one-time resume trigger
+  });
 
   const handleStartStory = useCallback((prompt: string) => {
     const ctx: StoryContext = { prompt, readingLevel, chapters: [] };
     setStoryContext(ctx);
+    chaptersDetailRef.current = [];
+    savedStoryIdRef.current = null;
     generate(ctx);
   }, [readingLevel, generate]);
 
@@ -87,8 +121,10 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
       ],
     };
     setStoryContext(updatedCtx);
+    // Persist the choice before generating so progress isn't lost if generation fails
+    persistToLibrary(updatedCtx, [...chaptersDetailRef.current], false);
     generate(updatedCtx, choiceText);
-  }, [storyContext, currentChapter, generate]);
+  }, [storyContext, currentChapter, generate, persistToLibrary]);
 
   const handleDoneReading = useCallback(() => {
     if (currentChapter?.isEnding) {
@@ -136,7 +172,6 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
   if (step === 'reading' && currentChapter) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white">
-        {/* Chapter header */}
         <div className="text-center pt-4 md:pt-6 pb-2 px-4">
           <span className="inline-block bg-purple-100 text-purple-700 text-xs md:text-sm font-bold px-3 py-1 rounded-full mb-1">
             Chapter {currentChapter.chapterNumber}
@@ -148,7 +183,6 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
           <ReadingSession text={currentChapter.text} onReset={onReset} />
         </main>
 
-        {/* Floating "Done Reading" button */}
         {!doneReading && (
           <div className="fixed bottom-0 inset-x-0 p-4 bg-gradient-to-t from-white via-white to-transparent z-20">
             <button
@@ -182,7 +216,6 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
   if (step === 'ending' && currentChapter) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white">
-        {/* Chapter header */}
         <div className="text-center pt-4 md:pt-6 pb-2 px-4">
           <span className="inline-block bg-purple-100 text-purple-700 text-xs md:text-sm font-bold px-3 py-1 rounded-full mb-1">
             Final Chapter
@@ -194,7 +227,6 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
           <ReadingSession text={currentChapter.text} onReset={onReset} />
         </main>
 
-        {/* Celebration card */}
         <div className="max-w-lg md:max-w-2xl mx-auto px-4 pb-8">
           <div className="rounded-2xl bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100 p-6 md:p-8 shadow-sm text-center">
             <p className="text-5xl md:text-6xl mb-3">🎉📖✨</p>
@@ -207,9 +239,7 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
             <p className="text-gray-500 text-sm md:text-base mb-5">
               Great job, storyteller! Every choice you made shaped this adventure.
             </p>
-            {storySaved && (
-              <p className="text-green-600 text-sm font-medium mb-4">✅ Saved to your story library</p>
-            )}
+            <p className="text-green-600 text-sm font-medium mb-4">✅ Saved to your story library</p>
             <div className="flex gap-3">
               <button
                 type="button"
@@ -217,7 +247,7 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
                   setStoryContext({ prompt: '', readingLevel, chapters: [] });
                   setCurrentChapter(null);
                   chaptersDetailRef.current = [];
-                  setStorySaved(false);
+                  savedStoryIdRef.current = null;
                   setStep('prompt');
                 }}
                 className="flex-1 py-3 md:py-4 rounded-2xl bg-purple-600 text-white font-bold text-lg md:text-xl
