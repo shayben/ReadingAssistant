@@ -9,6 +9,7 @@ import { calculateGamificationScore } from '../services/gamificationService';
 import { analyzeTextForMoments } from '../services/momentsService';
 import { preloadMoments } from '../services/mediaService';
 import type { PreloadedMoment } from '../services/mediaService';
+import { momentCache } from '../data/momentCache';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, batchTranslateText } from '../services/translationService';
 import type { SupportedLanguage, WordTranslationMap } from '../services/translationService';
 
@@ -20,6 +21,7 @@ export interface WordTiming {
 
 interface ReadingSessionProps {
   text: string;
+  momentCacheKey?: string;
   onReset: () => void;
 }
 
@@ -29,7 +31,7 @@ function tokenise(text: string): string[] {
   return text.match(/\S+/g) ?? [];
 }
 
-const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
+const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, onReset }) => {
   const words = useMemo(() => tokenise(text), [text]);
 
   const [statuses, setStatuses] = useState<Record<number, WordStatus>>({});
@@ -68,13 +70,18 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     if (!immersive) return;
     let cancelled = false;
     setMomentsLoading(true);
-    analyzeTextForMoments(words)
+
+    const momentsPromise = momentCacheKey && momentCache[momentCacheKey]
+      ? Promise.resolve(momentCache[momentCacheKey])
+      : analyzeTextForMoments(words);
+
+    momentsPromise
       .then((raw) => (!cancelled ? preloadMoments(raw) : []))
       .then((loaded) => { if (!cancelled) setMoments(loaded); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setMomentsLoading(false); });
     return () => { cancelled = true; };
-  }, [words, immersive]);
+  }, [words, immersive, momentCacheKey]);
 
   // Audio recording state
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);

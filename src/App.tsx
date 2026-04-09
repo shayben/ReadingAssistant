@@ -10,6 +10,7 @@ type AppStep = 'home' | 'camera' | 'processing' | 'reading' | 'demo-pick' | 'adv
 export default function App() {
   const [step, setStep] = useState<AppStep>('home');
   const [assignmentText, setAssignmentText] = useState('');
+  const [momentCacheKey, setMomentCacheKey] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [demoLevel, setDemoLevel] = useState<ReadingLevel | null>(null);
 
@@ -86,6 +87,7 @@ export default function App() {
   const handleReset = useCallback(() => {
     stopCamera();
     setAssignmentText('');
+    setMomentCacheKey(undefined);
     setError(null);
     setDemoLevel(null);
     setStep('home');
@@ -96,10 +98,11 @@ export default function App() {
     setStep('demo-pick');
   }, []);
 
-  const handleDemoParagraph = useCallback((p: DemoParagraph) => {
+  const handleDemoParagraph = useCallback((p: DemoParagraph, index: number) => {
     setAssignmentText(p.text);
+    setMomentCacheKey(demoLevel ? `${demoLevel.grade}-${index}` : undefined);
     setStep('reading');
-  }, []);
+  }, [demoLevel]);
 
   // Clean up camera on unmount
   useEffect(() => {
@@ -200,7 +203,7 @@ export default function App() {
               <button
                 key={i}
                 type="button"
-                onClick={() => handleDemoParagraph(p)}
+                onClick={() => handleDemoParagraph(p, i)}
                 className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-5
                            active:bg-indigo-50 active:border-indigo-200 transition-colors"
               >
@@ -277,7 +280,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white">
       <main className="pb-8 pt-2 md:pt-6">
-        <ReadingSession text={assignmentText} onReset={handleReset} />
+        <ReadingSession text={assignmentText} momentCacheKey={momentCacheKey} onReset={handleReset} />
       </main>
     </div>
   );
