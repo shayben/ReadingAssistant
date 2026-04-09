@@ -26,6 +26,7 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
   const [scores, setScores] = useState<Record<number, number>>({});
   const [wordTimings, setWordTimings] = useState<Record<number, WordTiming>>({});
   const [listening, setListening] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [sessionDone, setSessionDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fluencyScore, setFluencyScore] = useState<number | undefined>(undefined);
@@ -77,6 +78,7 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
   const startListening = useCallback(() => {
     setError(null);
     setSessionDone(false);
+    setPaused(false);
     setStatuses({});
     setScores({});
     setFluencyScore(undefined);
@@ -98,10 +100,57 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
     }
   }, [wordGroups, handleWordResult, handleDone, handleError]);
 
+  const pauseListening = useCallback(() => {
+    stopRef.current?.();
+    stopRef.current = null;
+    setPaused(true);
+  }, []);
+
+  const resumeListening = useCallback(() => {
+    const currentIdx = nextWordRef.current;
+    if (currentIdx >= words.length) {
+      setPaused(false);
+      setSessionDone(true);
+      onSessionDone?.();
+      return;
+    }
+
+    // Determine which group we're in and trim already-assessed words
+    let wordOffset = 0;
+    let resumeGroupIdx = 0;
+    for (let i = 0; i < wordGroups.length; i++) {
+      if (wordOffset + wordGroups[i].length > currentIdx) {
+        resumeGroupIdx = i;
+        break;
+      }
+      wordOffset += wordGroups[i].length;
+    }
+
+    const remaining = wordGroups.slice(resumeGroupIdx);
+    const posInGroup = currentIdx - wordOffset;
+    if (posInGroup > 0 && remaining.length > 0) {
+      remaining[0] = remaining[0].slice(posInGroup);
+    }
+
+    setPaused(false);
+    try {
+      const stop = startWindowedPronunciationAssessment(
+        remaining,
+        handleWordResult,
+        handleDone,
+        handleError,
+      );
+      stopRef.current = stop;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [words.length, wordGroups, handleWordResult, handleDone, handleError, onSessionDone]);
+
   const stopListening = useCallback(() => {
     stopRef.current?.();
     stopRef.current = null;
     setListening(false);
+    setPaused(false);
   }, []);
 
   const updateWordResult = useCallback((index: number, result: WordResult) => {
@@ -129,11 +178,14 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
     scores,
     wordTimings,
     listening,
+    paused,
     sessionDone,
     error,
     fluencyScore,
     nextWordIndex,
     startListening,
+    pauseListening,
+    resumeListening,
     stopListening,
     updateWordResult,
     setError,

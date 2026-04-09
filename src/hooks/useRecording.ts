@@ -33,6 +33,18 @@ export function useRecording() {
     }
   }, []);
 
+  const pauseRecording = useCallback(() => {
+    if (recorderRef.current?.state === 'recording') {
+      recorderRef.current.pause();
+    }
+  }, []);
+
+  const resumeRecording = useCallback(() => {
+    if (recorderRef.current?.state === 'paused') {
+      recorderRef.current.resume();
+    }
+  }, []);
+
   const stopRecording = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
       recorderRef.current.stop();
@@ -46,5 +58,5 @@ export function useRecording() {
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
   }, []);
 
-  return { recordingBlob, startRecording, stopRecording, cleanup };
+  return { recordingBlob, startRecording, pauseRecording, resumeRecording, stopRecording, cleanup };
 }

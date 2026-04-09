@@ -77,11 +77,12 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
   const words = useMemo(() => tokenise(text), [text]);
   const wordGroups = useMemo(() => segmentBySentence(words), [words]);
 
-  const { recordingBlob, startRecording, stopRecording, cleanup: cleanupRecording } = useRecording();
+  const { recordingBlob, startRecording, pauseRecording, resumeRecording, stopRecording, cleanup: cleanupRecording } = useRecording();
 
   const {
-    statuses, scores, wordTimings, listening, sessionDone, error,
+    statuses, scores, wordTimings, listening, paused, sessionDone, error,
     fluencyScore, nextWordIndex, startListening: startAssessment,
+    pauseListening: pauseAssessment, resumeListening: resumeAssessment,
     stopListening: stopAssessment, updateWordResult,
   } = useAssessment({
     words,
@@ -125,6 +126,16 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
     await startRecording();
     startAssessment();
   }, [startRecording, startAssessment]);
+
+  const pauseListening = useCallback(() => {
+    pauseAssessment();
+    pauseRecording();
+  }, [pauseAssessment, pauseRecording]);
+
+  const resumeListening = useCallback(() => {
+    resumeRecording();
+    resumeAssessment();
+  }, [resumeRecording, resumeAssessment]);
 
   const stopListening = useCallback(() => {
     stopAssessment();
@@ -227,15 +238,44 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
           >
             🎤 {sessionDone ? 'Try Again!' : 'Read Aloud'}
           </button>
+        ) : paused ? (
+          <>
+            <button
+              type="button"
+              onClick={resumeListening}
+              className="flex-1 py-4 md:py-5 rounded-2xl bg-green-500 text-white font-bold text-xl md:text-2xl
+                         active:bg-green-600 transition-colors shadow-md"
+            >
+              ▶ Resume
+            </button>
+            <button
+              type="button"
+              onClick={stopListening}
+              className="py-4 md:py-5 px-5 md:px-6 rounded-2xl bg-red-500 text-white font-bold text-xl md:text-2xl
+                         active:bg-red-600 transition-colors shadow-md"
+            >
+              ⏹
+            </button>
+          </>
         ) : (
-          <button
-            type="button"
-            onClick={stopListening}
-            className="flex-1 py-4 md:py-5 rounded-2xl bg-red-500 text-white font-bold text-xl md:text-2xl
-                       active:bg-red-600 transition-colors shadow-md animate-pulse"
-          >
-            ⏹ Done
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={pauseListening}
+              className="flex-1 py-4 md:py-5 rounded-2xl bg-amber-500 text-white font-bold text-xl md:text-2xl
+                         active:bg-amber-600 transition-colors shadow-md"
+            >
+              ⏸ Pause
+            </button>
+            <button
+              type="button"
+              onClick={stopListening}
+              className="py-4 md:py-5 px-5 md:px-6 rounded-2xl bg-red-500 text-white font-bold text-xl md:text-2xl
+                         active:bg-red-600 transition-colors shadow-md animate-pulse"
+            >
+              ⏹
+            </button>
+          </>
         )}
         <button
           type="button"
