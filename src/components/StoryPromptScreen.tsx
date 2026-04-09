@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { recognizeSpeech } from '../services/speechService';
 
 interface StoryPromptScreenProps {
   readingLevel: string;
@@ -27,6 +28,9 @@ const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
   onBack,
 }) => {
   const [prompt, setPrompt] = useState('');
+  const [listening, setListening] = useState(false);
+  const [sttError, setSttError] = useState<string | null>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
 
   const handleTheme = (themePrompt: string) => {
     setPrompt(themePrompt);
@@ -35,6 +39,30 @@ const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
   const handleSubmit = () => {
     const trimmed = prompt.trim();
     if (trimmed) onStart(trimmed);
+  };
+
+  const handleMicToggle = async () => {
+    if (listening) {
+      cancelRef.current?.();
+      cancelRef.current = null;
+      setListening(false);
+      return;
+    }
+
+    setListening(true);
+    setSttError(null);
+    const { promise, cancel } = recognizeSpeech();
+    cancelRef.current = cancel;
+
+    try {
+      const text = await promise;
+      if (text) setPrompt((prev) => (prev ? `${prev} ${text}` : text));
+    } catch (err) {
+      setSttError(err instanceof Error ? err.message : 'Speech recognition failed');
+    } finally {
+      cancelRef.current = null;
+      setListening(false);
+    }
   };
 
   return (
@@ -55,7 +83,7 @@ const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
           Reading level: {levelEmoji} {levelLabel} (Grade {readingLevel})
         </p>
         <p className="text-gray-500 text-sm md:text-base mb-5">
-          Pick a theme or type your own adventure idea!
+          Pick a theme, type, or <span className="font-semibold text-purple-600">speak</span> your adventure idea!
         </p>
 
         {/* Theme quick-picks */}
@@ -77,16 +105,52 @@ const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
           ))}
         </div>
 
-        {/* Custom prompt input */}
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="A dog who learns to fly and saves the day..."
-          rows={3}
-          className="w-full rounded-2xl border border-gray-200 p-4 md:p-5 text-base md:text-lg
-                     focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-300
-                     placeholder:text-gray-300 resize-none mb-4"
-        />
+        {/* Custom prompt input with mic button */}
+        <div className="relative mb-4">
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="A dog who learns to fly and saves the day..."
+            rows={3}
+            className="w-full rounded-2xl border border-gray-200 p-4 md:p-5 pr-14 text-base md:text-lg
+                       focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-300
+                       placeholder:text-gray-300 resize-none"
+          />
+          <button
+            type="button"
+            onClick={handleMicToggle}
+            aria-label={listening ? 'Stop recording' : 'Speak your story idea'}
+            className={`absolute right-3 top-3 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center
+                        transition-all shadow-sm
+                        ${listening
+                          ? 'bg-red-500 text-white animate-pulse'
+                          : 'bg-purple-100 text-purple-600 active:bg-purple-200'
+                        }`}
+          >
+            {listening ? (
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="23" />
+                <line x1="8" y1="23" x2="16" y2="23" />
+              </svg>
+            )}
+          </button>
+        </div>
+
+        {/* STT status / error */}
+        {listening && (
+          <p className="text-purple-600 text-sm font-medium mb-3 animate-pulse">
+            🎙️ Listening… speak your story idea
+          </p>
+        )}
+        {sttError && (
+          <p className="text-red-500 text-sm mb-3">{sttError}</p>
+        )}
 
         {/* Start button */}
         <button

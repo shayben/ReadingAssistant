@@ -281,6 +281,47 @@ export function startWindowedPronunciationAssessment(
   };
 }
 
+/**
+ * Free-form speech-to-text: listens to the microphone and returns the recognized text.
+ * Returns a promise with the transcript and a cancel function.
+ */
+export function recognizeSpeech(locale: string = DEFAULT_LOCALE): { promise: Promise<string>; cancel: () => void } {
+  const speechConfig = getSpeechConfig();
+  speechConfig.speechRecognitionLanguage = locale;
+
+  const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+  const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+
+  let cancelled = false;
+
+  const promise = new Promise<string>((resolve, reject) => {
+    recognizer.recognizeOnceAsync(
+      (result) => {
+        recognizer.close();
+        if (cancelled) { resolve(''); return; }
+        if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+          resolve(result.text);
+        } else if (result.reason === SpeechSDK.ResultReason.NoMatch) {
+          reject(new Error('No speech detected — please try again.'));
+        } else {
+          reject(new Error('Speech recognition failed. Check your microphone.'));
+        }
+      },
+      (err) => {
+        recognizer.close();
+        reject(new Error(typeof err === 'string' ? err : 'Speech recognition error'));
+      },
+    );
+  });
+
+  const cancel = () => {
+    cancelled = true;
+    try { recognizer.close(); } catch { /* already closed */ }
+  };
+
+  return { promise, cancel };
+}
+
 /** Synthesise and play the given word using Azure TTS. */
 export function speakWord(word: string, locale: string = DEFAULT_LOCALE): void {
   const speechConfig = getSpeechConfig();
