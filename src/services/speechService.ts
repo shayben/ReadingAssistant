@@ -62,8 +62,18 @@ export interface AssessmentResult {
 type WordCallback = (word: WordResult) => void;
 type DoneCallback = (result: AssessmentResult) => void;
 type ErrorCallback = (error: string) => void;
-/** Called with the number of words recognised so far (absolute index from start of text). */
-export type RecognizingCallback = (interimWordCount: number) => void;
+/**
+ * Called with interim recognition info. `absoluteWordCount` is the number of
+ * words recognised so far measured against the ORIGINAL reference text, not
+ * the current window slice. `interimText` is the raw interim transcript.
+ */
+export type RecognizingCallback = (absoluteWordCount: number, interimText: string) => void;
+/**
+ * Called for each `Insertion` word result. Useful for detecting off-script
+ * reading. Insertions are still filtered out of the normal `onWord` stream
+ * so they don't disturb per-word status tracking.
+ */
+export type InsertionCallback = (insertedWord: string, offsetSec: number) => void;
 
 function getSpeechConfig(): SpeechSDK.SpeechConfig {
   if (!SPEECH_KEY || !SPEECH_REGION) {
@@ -78,10 +88,16 @@ function getSpeechConfig(): SpeechSDK.SpeechConfig {
 /**
  * Start a pronunciation assessment session.
  *
- * @param referenceText  The text the user is supposed to read.
- * @param onWord         Called each time a word result is available.
- * @param onDone         Called when the session ends with the full summary.
- * @param onError        Called on error.
+ * @param referenceText   The text the user is supposed to read.
+ * @param onWord          Called each time a word result is available.
+ * @param onDone          Called when the session ends with the full summary.
+ * @param onError         Called on error.
+ * @param locale          BCP-47 recognition locale.
+ * @param onRecognizing   Optional interim callback.
+ * @param baseWordOffset  Offset (in words) from the start of the ORIGINAL reference
+ *                        text to the start of `referenceText`. Used so interim word
+ *                        counts reported via `onRecognizing` are absolute.
+ * @param onInsertion     Optional callback invoked for each `Insertion` word result.
  * @returns A stop function that ends the session.
  */
 export function startPronunciationAssessment(
@@ -91,6 +107,8 @@ export function startPronunciationAssessment(
   onError: ErrorCallback,
   locale: string = DEFAULT_LOCALE,
   onRecognizing?: RecognizingCallback,
+  baseWordOffset = 0,
+  onInsertion?: InsertionCallback,
 ): () => void {
   const speechConfig = getSpeechConfig();
   speechConfig.speechRecognitionLanguage = locale;
@@ -150,6 +168,12 @@ export function startPronunciationAssessment(
           };
         });
 
+        if (onInsertion) {
+          for (const w of words) {
+            if (w.errorType === 'Insertion') onInsertion(w.word, w.offsetSec);
+          }
+        }
+
         words.forEach(onWord);
       } catch {
         // ignore parse errors for individual results
@@ -163,7 +187,7 @@ export function startPronunciationAssessment(
       if (event.result.reason === SpeechSDK.ResultReason.RecognizingSpeech) {
         const text = event.result.text ?? '';
         const wordCount = (text.match(/\S+/g) ?? []).length;
-        if (wordCount > 0) onRecognizing(wordCount);
+        if (wordCount > 0) onRecognizing(baseWordOffset + wordCount, text);
       }
     };
   }
@@ -213,8 +237,14 @@ export function startPronunciationAssessment(
  * should be aligned to sentence boundaries so that the recogniser
  * restarts at natural reading pauses rather than mid-sentence.
  *
- * Insertions are filtered out — `onWord` only fires for reference words,
- * one at a time, in strict reading order.
+ * Insertions are filtered out of the primary word stream — `onWord` only
+ * fires for reference words, one at a time, in strict reading order — but
+ * they are forwarded to `onInsertion` if provided.
+ *
+ * `baseWordOffset` is the absolute word index (into the original reference
+ * text) at which `wordGroups[0]` begins. This is important when callers pass
+ * a slice (e.g. after pause/resume or alignment-loss realign) so interim
+ * word counts reported via `onRecognizing` remain absolute.
  */
 export function startWindowedPronunciationAssessment(
   wordGroups: string[][],
@@ -223,6 +253,8 @@ export function startWindowedPronunciationAssessment(
   onError: ErrorCallback,
   locale: string = DEFAULT_LOCALE,
   onRecognizing?: RecognizingCallback,
+  baseWordOffset = 0,
+  onInsertion?: InsertionCallback,
 ): () => void {
   let groupIdx = 0;
   let currentStop: (() => void) | null = null;
@@ -260,8 +292,8 @@ export function startWindowedPronunciationAssessment(
     let advancing = false;
     const elapsed = (Date.now() - t0) / 1000;
 
-    // Compute how many words precede this window (absolute offset)
-    let windowWordOffset = 0;
+    // Compute how many words precede this window (absolute offset into original ref)
+    let windowWordOffset = baseWordOffset;
     for (let i = 0; i < groupIdx; i++) windowWordOffset += wordGroups[i].length;
 
     const onWindowWord: WordCallback = (result) => {
@@ -286,9 +318,9 @@ export function startWindowedPronunciationAssessment(
       reportDone();
     };
 
-    // Thread recognizing callback with absolute offset
+    // Thread recognizing callback with absolute offset (incl. baseWordOffset)
     const onWindowRecognizing: RecognizingCallback | undefined = onRecognizing
-      ? (interimCount) => onRecognizing(windowWordOffset + interimCount)
+      ? (absCount, interimText) => onRecognizing(absCount, interimText)
       : undefined;
 
     currentStop = startPronunciationAssessment(
@@ -298,6 +330,8 @@ export function startWindowedPronunciationAssessment(
       (err) => { if (!stopped) onError(err); },
       locale,
       onWindowRecognizing,
+      windowWordOffset,
+      onInsertion,
     );
   }
 

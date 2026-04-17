@@ -24,6 +24,8 @@ import { startAmbient, stopAmbient } from '../services/audioService';
 import { collectSticker } from '../services/stickerAlbumService';
 import type { StickerRegistry } from '../services/stickerService';
 import type { PreloadedMoment } from '../services/mediaService';
+import { parseReadingLayout } from '../services/layoutService';
+import type { LayoutBlock } from '../services/layoutService';
 
 export type { WordTiming } from '../hooks/useAssessment';
 
@@ -87,7 +89,19 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
   text, momentCacheKey, stickerRegistry, knownStickerLabels, storyTitle, onReset,
 }) => {
   const { user } = useAuth();
-  const words = useMemo(() => tokenise(text), [text]);
+  const { words, blocks } = useMemo(() => {
+    const parsed = parseReadingLayout(text);
+    // Fallback to flat tokenise if the parser found nothing (should be rare).
+    if (parsed.words.length === 0 && text.trim()) {
+      const flat = tokenise(text);
+      const block: LayoutBlock = {
+        kind: 'paragraph',
+        tokens: flat.map((t, i) => ({ text: t, index: i })),
+      };
+      return { words: flat, blocks: [block] };
+    }
+    return parsed;
+  }, [text]);
   const wordGroups = useMemo(() => segmentBySentence(words), [words]);
 
   const { recordingBlob, startRecording, pauseRecording, resumeRecording, stopRecording, cleanup: cleanupRecording } = useRecording();
@@ -380,24 +394,36 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
 
       {/* Reading area with sticker overlay container */}
       <div className="relative overflow-visible">
-        {/* Reading text block */}
+        {/* Reading text block — preserves paragraph structure & centered headings from the source */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 md:px-8 py-4 md:py-6 min-h-40
                         text-xl md:text-2xl leading-relaxed md:leading-loose font-serif tracking-wide">
-          {words.map((word, i) => (
-            <React.Fragment key={i}>
-              <WordCard
-                word={word}
-                index={i}
-                status={statuses[i] ?? 'pending'}
-                isNext={listening && i === nextWordIndex}
-                isBeingRead={listening && !paused && i >= nextWordIndex && i < spokenCursor && statuses[i] === undefined}
-                hasMoment={momentIndices.has(i)}
-                score={scores[i]}
-                onClick={handleWordClick}
-              />
-              {' '}
-            </React.Fragment>
-          ))}
+          {blocks.map((block, bi) => {
+            const isHeading = block.kind === 'heading';
+            const blockClass = isHeading
+              ? 'text-center font-bold text-2xl md:text-3xl mb-4 md:mb-6'
+              : bi === 0
+                ? 'mb-4 md:mb-5'
+                : 'mt-4 md:mt-5 mb-4 md:mb-5';
+            return (
+              <div key={bi} className={blockClass}>
+                {block.tokens.map((tok) => (
+                  <React.Fragment key={tok.index}>
+                    <WordCard
+                      word={tok.text}
+                      index={tok.index}
+                      status={statuses[tok.index] ?? 'pending'}
+                      isNext={listening && tok.index === nextWordIndex}
+                      isBeingRead={listening && !paused && tok.index >= nextWordIndex && tok.index < spokenCursor && statuses[tok.index] === undefined}
+                      hasMoment={momentIndices.has(tok.index)}
+                      score={scores[tok.index]}
+                      onClick={handleWordClick}
+                    />
+                    {' '}
+                  </React.Fragment>
+                ))}
+              </div>
+            );
+          })}
         </div>
 
         {/* Animated sticker overlays — positioned in margins around the text */}
