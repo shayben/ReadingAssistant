@@ -66,7 +66,7 @@ const AskHelper: React.FC<AskHelperProps> = ({ uid, accountLanguage, onAccountLa
     try {
       const blob = await stopped;
       if (blob.size < 200) {
-        setErrorMsg('I didn\'t catch that — try holding the button a bit longer.');
+        setErrorMsg('I didn\'t catch that — try speaking closer to the microphone.');
         setPhase('error');
         return;
       }
@@ -140,6 +140,14 @@ const AskHelper: React.FC<AskHelperProps> = ({ uid, accountLanguage, onAccountLa
     }
   }, [phase]);
 
+  const handleTap = useCallback(() => {
+    if (phase === 'idle' || phase === 'error' || phase === 'result') {
+      handleStart();
+    } else if (phase === 'recording') {
+      handleStop();
+    }
+  }, [phase, handleStart, handleStop]);
+
   const handlePickLanguage = useCallback(async (code: string) => {
     setShowLangPicker(false);
     if (code === accountLanguage) return;
@@ -160,11 +168,11 @@ const AskHelper: React.FC<AskHelperProps> = ({ uid, accountLanguage, onAccountLa
     showLangPicker;
 
   const statusLabel =
-    phase === 'recording' ? 'Listening… release to ask'
+    phase === 'recording' ? 'Listening… tap to stop'
     : phase === 'transcribing' ? 'Hearing you…'
     : phase === 'thinking' ? 'Thinking…'
     : phase === 'translating' ? 'Translating…'
-    : 'Hold to ask';
+    : 'Tap to ask';
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -172,14 +180,8 @@ const AskHelper: React.FC<AskHelperProps> = ({ uid, accountLanguage, onAccountLa
       <div className="relative">
         <button
           type="button"
-          aria-label="Hold to ask Wizbit to spell or translate a word"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            if (phase === 'idle' || phase === 'error' || phase === 'result') handleStart();
-          }}
-          onPointerUp={handleStop}
-          onPointerCancel={handleStop}
-          onPointerLeave={() => { if (phase === 'recording') handleStop(); }}
+          aria-label="Tap to ask Wizbit to spell or translate a word"
+          onClick={handleTap}
           disabled={phase === 'transcribing' || phase === 'thinking' || phase === 'translating'}
           className={`group w-20 h-20 md:w-24 md:h-24 rounded-full
                      flex items-center justify-center select-none
@@ -222,8 +224,10 @@ const AskHelper: React.FC<AskHelperProps> = ({ uid, accountLanguage, onAccountLa
           className="fixed inset-0 z-40 flex items-end md:items-center justify-center
                      bg-black/30 p-4 animate-fade-in"
           onClick={() => {
-            // Tap outside dismisses lang picker / result / error, but never an in-flight op.
-            if (phase === 'recording' || phase === 'transcribing' || phase === 'thinking' || phase === 'translating') return;
+            // Tapping outside the card during recording stops it early.
+            if (phase === 'recording') { handleStop(); return; }
+            // Tapping outside dismisses lang picker / result / error; blocks other in-flight ops.
+            if (phase === 'transcribing' || phase === 'thinking' || phase === 'translating') return;
             setShowLangPicker(false);
             if (phase === 'result' || phase === 'error') reset();
           }}
@@ -262,6 +266,20 @@ const AskHelper: React.FC<AskHelperProps> = ({ uid, accountLanguage, onAccountLa
               <div className="flex items-center gap-3 py-2">
                 <span className="text-3xl">{phase === 'recording' ? '⏺️' : '🎙️'}</span>
                 <span className="text-base md:text-lg font-semibold text-indigo-700">{statusLabel}</span>
+              </div>
+            )}
+
+            {/* Stop button visible while recording */}
+            {!showLangPicker && phase === 'recording' && (
+              <div className="mt-2 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  className="px-5 py-2 rounded-full bg-red-500 text-white text-sm font-semibold
+                             active:bg-red-600 shadow-md"
+                >
+                  Stop
+                </button>
               </div>
             )}
 
