@@ -27,6 +27,13 @@ export const config = {
     key: envVal('AZURE_OPENAI_KEY'),
     deployment: envVal('AZURE_OPENAI_DEPLOYMENT') ?? 'gpt-4o-mini',
     dalleDeployment: envVal('AZURE_DALLE_DEPLOYMENT'),
+    whisperDeployment: envVal('AZURE_OPENAI_WHISPER_DEPLOYMENT') ?? 'whisper',
+    /** Optional separate endpoint/key for the Whisper deployment when it lives
+     *  in a different AOAI resource (Whisper is region-limited and may not be
+     *  available in the same region as the chat deployment). Falls back to
+     *  the main `endpoint` / `key` when unset. */
+    whisperEndpoint: envVal('AZURE_OPENAI_WHISPER_ENDPOINT')?.replace(/\/$/, ''),
+    whisperKey: envVal('AZURE_OPENAI_WHISPER_KEY'),
   },
   auth: {
     msTenantId: envVal('AZURE_AD_TENANT_ID') ?? 'common',

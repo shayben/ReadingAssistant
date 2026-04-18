@@ -16,6 +16,8 @@ import {
   loadUserProgress,
   loadTrophies,
   saveTrophies,
+  getAccountLanguage,
+  setAccountLanguage,
 } from '../services/progressService';
 import { computeNewTrophies, getTrophy } from '../services/trophyService';
 import type { Trophy } from '../services/trophyService';
@@ -120,10 +122,30 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
   const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
   const [immersive, setImmersive] = useState(true);
 
-  // Translation language
+  // Translation language — initialised from the persisted account language
+  // preference and written back when the picker changes so the home-screen
+  // Ask helper and ReadingSession stay in sync.
   const [targetLang, setTargetLang] = useState<SupportedLanguage>(DEFAULT_LANGUAGE);
   const [langPickerOpen, setLangPickerOpen] = useState(false);
   const [translationMap, setTranslationMap] = useState<WordTranslationMap>(new Map());
+
+  // Hydrate targetLang from persisted account language whenever the user changes.
+  useEffect(() => {
+    let cancelled = false;
+    getAccountLanguage(user?.uid).then((code) => {
+      if (cancelled) return;
+      const found = SUPPORTED_LANGUAGES.find((l) => l.code === code);
+      if (found) setTargetLang(found);
+    });
+    return () => { cancelled = true; };
+  }, [user?.uid]);
+
+  const handlePickLanguage = useCallback((lang: SupportedLanguage) => {
+    setTargetLang(lang);
+    setLangPickerOpen(false);
+    // Persist for next session and for the home-screen Ask helper.
+    setAccountLanguage(user?.uid, lang.code);
+  }, [user?.uid]);
 
   // Batch-translate all words when text or language changes
   useEffect(() => {
@@ -358,7 +380,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
                 <button
                   key={lang.code}
                   type="button"
-                  onClick={() => { setTargetLang(lang); setLangPickerOpen(false); }}
+                  onClick={() => handlePickLanguage(lang)}
                   className={`flex items-center gap-2.5 w-full py-2 px-3 rounded-xl text-left transition-colors
                     ${lang.code === targetLang.code
                       ? 'bg-indigo-100'

@@ -5,6 +5,7 @@ import LoginScreen from './components/LoginScreen';
 import UserHeader from './components/UserHeader';
 import ProgressDashboard from './components/ProgressDashboard';
 import StoryLibrary from './components/StoryLibrary';
+import AskHelper from './components/AskHelper';
 import { recognizeText } from './services/ocrService';
 import { extractFromEbook } from './services/ebookService';
 import { readingLevels } from './data/demoParagraphs';
@@ -12,6 +13,7 @@ import type { ReadingLevel, DemoParagraph } from './data/demoParagraphs';
 import type { SavedStory } from './services/storyLibraryService';
 import { useAuth } from './contexts/AuthContext';
 import { useAppStep } from './hooks/useAppStep';
+import { getAccountLanguage, DEFAULT_ACCOUNT_LANGUAGE } from './services/progressService';
 
 export default function App() {
   const { user, loading: authLoading, isConfigured, signOut } = useAuth();
@@ -21,6 +23,16 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [demoLevel, setDemoLevel] = useState<ReadingLevel | null>(null);
   const [resumeStory, setResumeStory] = useState<SavedStory | null>(null);
+  const [accountLanguage, setAccountLanguageState] = useState<string>(DEFAULT_ACCOUNT_LANGUAGE);
+
+  // Load persisted account language whenever the signed-in user changes.
+  useEffect(() => {
+    let cancelled = false;
+    getAccountLanguage(user?.uid).then((code) => {
+      if (!cancelled) setAccountLanguageState(code);
+    });
+    return () => { cancelled = true; };
+  }, [user?.uid]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -278,6 +290,13 @@ export default function App() {
         >
           📚 My Stories
         </button>
+
+        {/* Voice helper: spell or translate any word */}
+        <AskHelper
+          uid={user?.uid}
+          accountLanguage={accountLanguage}
+          onAccountLanguageChange={setAccountLanguageState}
+        />
       </div>
     );
   }

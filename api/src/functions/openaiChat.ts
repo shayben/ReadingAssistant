@@ -7,7 +7,7 @@
  *
  * Request:
  *   {
- *     purpose: 'story-chapter' | 'moments' | 'translate-batch' | 'ocr-clean',
+ *     purpose: 'story-chapter' | 'moments' | 'translate-batch' | 'ocr-clean' | 'word-helper',
  *     messages: ChatCompletionMessage[],
  *     temperature?: number,
  *     max_tokens?: number,
@@ -23,7 +23,7 @@ import { guard } from '../lib/guard.js';
 import { badRequest, ok, upstreamError } from '../lib/http.js';
 import type { Purpose } from '../lib/quota.js';
 
-type ClientPurpose = 'story-chapter' | 'moments' | 'translate-batch' | 'ocr-clean';
+type ClientPurpose = 'story-chapter' | 'moments' | 'translate-batch' | 'ocr-clean' | 'word-helper';
 
 interface ChatBody {
   purpose?: ClientPurpose;
@@ -39,6 +39,7 @@ const PURPOSE_MAP: Record<ClientPurpose, Purpose> = {
   'translate-batch': 'translate-batch',
   // OCR cleanup piggybacks on the OCR call itself (already charged) — bill 0.
   'ocr-clean': 'ocr',
+  'word-helper': 'word-helper',
 };
 
 const PURPOSE_AMOUNT: Record<ClientPurpose, number> = {
@@ -46,6 +47,7 @@ const PURPOSE_AMOUNT: Record<ClientPurpose, number> = {
   moments: 1,
   'translate-batch': 1,
   'ocr-clean': 0,
+  'word-helper': 1,
 };
 
 const ALLOWED_TEMPS = (t: number | undefined) =>

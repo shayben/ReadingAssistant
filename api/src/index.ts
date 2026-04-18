@@ -6,6 +6,7 @@
 import './functions/ocr.js';
 import './functions/openaiChat.js';
 import './functions/openaiImage.js';
+import './functions/openaiTranscribe.js';
 import './functions/speechToken.js';
 import './functions/translate.js';
 import './functions/usage.js';

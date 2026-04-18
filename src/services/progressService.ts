@@ -12,6 +12,7 @@
  *   type="session"      id={uid}_{timestamp}
  *   type="practiceWord" id={uid}_pw_{word}
  *   type="trophy"       id={uid}_trophy_{trophyId}
+ *   type="prefs"        id={uid}_prefs   (account language and other preferences)
  */
 
 import {
@@ -417,3 +418,67 @@ export async function loadUserProgress(uid: string): Promise<UserProgress> {
     consecutiveWeeks: computeConsecutiveWeeks(meta.sessionDates),
   };
 }
+
+// ---------------------------------------------------------------------------
+// User preferences (account language)
+// ---------------------------------------------------------------------------
+
+/** Default account language code; matches translationService DEFAULT_LANGUAGE. */
+export const DEFAULT_ACCOUNT_LANGUAGE = 'he';
+
+interface PrefsDoc {
+  id: string;
+  uid: string;
+  type: 'prefs';
+  accountLanguage: string;
+}
+
+const LS_PREFS = (uid: string) => `ra_prefs_${uid}`;
+const prefsId = (uid: string) => `${uid}_prefs`;
+
+/** localStorage key suffix for users who haven't signed in. */
+function effectiveUid(uid?: string | null): string {
+  return uid && uid.length > 0 ? uid : 'anon';
+}
+
+/**
+ * Load the account language for the given user. Falls back to localStorage,
+ * then to {@link DEFAULT_ACCOUNT_LANGUAGE}. Cosmos lookup is only attempted
+ * when the user is signed in and Cosmos is configured.
+ */
+export async function getAccountLanguage(uid?: string | null): Promise<string> {
+  const u = effectiveUid(uid);
+  const cached = lsGet<{ accountLanguage?: string }>(LS_PREFS(u))?.accountLanguage;
+
+  if (uid && isCosmosConfigured) {
+    try {
+      const doc = await readDocument<PrefsDoc>(prefsId(uid), uid);
+      if (doc?.accountLanguage) {
+        lsSet(LS_PREFS(u), { accountLanguage: doc.accountLanguage });
+        return doc.accountLanguage;
+      }
+    } catch { /* fall through to local cache */ }
+  }
+
+  return cached ?? DEFAULT_ACCOUNT_LANGUAGE;
+}
+
+/**
+ * Persist the account language preference. Writes localStorage immediately,
+ * then best-effort upsert to Cosmos when signed in. Safe to call without a
+ * uid (anonymous users keep their preference in localStorage only).
+ */
+export async function setAccountLanguage(uid: string | null | undefined, code: string): Promise<void> {
+  const trimmed = code.trim();
+  if (!trimmed) return;
+  const u = effectiveUid(uid);
+  lsSet(LS_PREFS(u), { accountLanguage: trimmed });
+
+  if (!uid || !isCosmosConfigured) return;
+  try {
+    const doc: PrefsDoc = { id: prefsId(uid), uid, type: 'prefs', accountLanguage: trimmed };
+    await upsertDocument(doc as unknown as Record<string, unknown>);
+  } catch { /* non-fatal */ }
+}
+
+

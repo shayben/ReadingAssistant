@@ -25,7 +25,9 @@ export type Purpose =
   | 'translate-batch'
   | 'translate-word'
   | 'sticker-image'
-  | 'speech-minutes';
+  | 'speech-minutes'
+  | 'transcribe'
+  | 'word-helper';
 
 export type Plan = 'free' | 'trialing' | 'premium' | 'past_due' | 'canceled';
 
@@ -39,6 +41,10 @@ interface PlanLimits {
   'sticker-image': number;
   /** Speech recognition minutes per day (charged in whole minutes). */
   'speech-minutes': number;
+  /** Whisper audio transcription calls (one per "Ask" mic press). */
+  transcribe: number;
+  /** Intent classification calls for the Ask helper (cheap chat). */
+  'word-helper': number;
 }
 
 const PREMIUM_LIMITS: PlanLimits = {
@@ -49,6 +55,8 @@ const PREMIUM_LIMITS: PlanLimits = {
   'translate-word': 1000,
   'sticker-image': 50,
   'speech-minutes': 500,
+  transcribe: 200,
+  'word-helper': 200,
 };
 
 const FREE_LIMITS: PlanLimits = {
@@ -59,6 +67,8 @@ const FREE_LIMITS: PlanLimits = {
   'translate-word': 50,
   'sticker-image': 0,
   'speech-minutes': 10,
+  transcribe: 20,
+  'word-helper': 20,
 };
 
 export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
