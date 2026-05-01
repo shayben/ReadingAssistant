@@ -440,7 +440,26 @@ export function recognizeSpeech(locale: string = DEFAULT_LOCALE): { promise: Pro
   return { promise, cancel };
 }
 
-/** Synthesise and play the given word using Azure TTS. */
+/** Escape a string for safe inclusion in SSML text. */
+function escapeSsml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Synthesise and play the given word using Azure TTS.
+ *
+ * Uses SSML with an explicit leading silence and a slightly slower prosody
+ * rate. The leading silence is important: the Speech SDK's default
+ * SpeakerAudioDestination plays audio through the Web Audio API and the
+ * very first ~50–150 ms can be clipped while the audio graph spins up,
+ * which is especially noticeable on short single-word utterances. A small
+ * silent pad pushes the first phoneme past that warm-up window.
+ */
 export async function speakWord(word: string, locale: string = DEFAULT_LOCALE): Promise<void> {
   let speechConfig: SpeechSDK.SpeechConfig;
   try {
@@ -449,11 +468,26 @@ export async function speakWord(word: string, locale: string = DEFAULT_LOCALE): 
     console.error('TTS token error:', err);
     return;
   }
-  speechConfig.speechSynthesisVoiceName = resolveVoice(locale);
+  const voice = resolveVoice(locale);
+  speechConfig.speechSynthesisVoiceName = voice;
+  // Higher-fidelity output reduces perceptual artifacts on short utterances.
+  speechConfig.speechSynthesisOutputFormat =
+    SpeechSDK.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3;
+
+  const safeWord = escapeSsml(word);
+  const ssml =
+    `<speak version="1.0" xml:lang="${locale}" ` +
+    `xmlns="http://www.w3.org/2001/10/synthesis" ` +
+    `xmlns:mstts="https://www.w3.org/2001/mstts">` +
+    `<voice name="${voice}">` +
+    `<mstts:silence type="Leading-exact" value="200ms"/>` +
+    `<prosody rate="-10%">${safeWord}</prosody>` +
+    `<mstts:silence type="Tailing-exact" value="120ms"/>` +
+    `</voice></speak>`;
 
   const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig);
-  synthesizer.speakTextAsync(
-    word,
+  synthesizer.speakSsmlAsync(
+    ssml,
     () => synthesizer.close(),
     (err) => {
       console.error('TTS error:', err);
